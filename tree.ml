@@ -78,7 +78,9 @@ type m = {
 }
 
 let string_of_split { s_gamma ; s_n ; s_loss } =
-  Printf.sprintf "gamma=%f n=%d loss=%f" s_gamma s_n s_loss
+  Printf.sprintf "gamma=[%s] n=%d loss=%f"
+    (String.concat "," (Array.(to_list (map string_of_float s_gamma))))
+    s_n s_loss
 
 let best_split_of_features m =
   Feat_map.fold m.feature_map (
@@ -119,15 +121,17 @@ let directions_of_split s_to_k s_pivot =
   directions
 
 let rec terminate (best_split : Proto_t.split) =
-  let difference_in_gamma =
-    let os =
-      match best_split with
-        | `OrdinalSplit os -> os
-        | `CategoricalSplit (os, _) -> os
-    in
-    os.os_left.s_gamma -. os.os_right.s_gamma
-  in
-  if abs_float difference_in_gamma < -1e8 then
+  (* let difference_in_gamma = *)
+  (*   let os = *)
+  (*     match best_split with *)
+  (*       | `OrdinalSplit os -> os *)
+  (*       | `CategoricalSplit (os, _) -> os *)
+  (*   in *)
+  (*   Utils.Array.map2 (-.) os.os_left.s_gamma os.os_right.s_gamma *)
+  (* in *)
+  (* if abs_float difference_in_gamma < -1e8 then *)
+  (* How could this condition ever fire? Alex 20140216 *)
+  if false then
     None (* split not found *)
   else
     let node =
@@ -307,6 +311,8 @@ let feature_id_set_of_tree tree =
 
 module IntMap = Utils.XMap( Utils.Int )
 
+type eval = (Dog_t.feature_id -> Feat.afeature) -> Model_t.l_tree -> float array array
+
 (*
   let nl tree_array =
     Array.fold_left (
@@ -317,9 +323,9 @@ module IntMap = Utils.XMap( Utils.Int )
     ) 0 tree_array
 *)
 
-let mk_eval num_observations =
-  let gamma = Array.create num_observations nan in
-  let gamma_leaf = Array.create num_observations (`Leaf nan) in
+let mk_eval num_observations : eval =
+  let gamma = Array.create num_observations [||] in
+  let gamma_leaf = Array.create num_observations (`Leaf [||] ) in
   fun find_by_id tree ->
     let feature_id_set = feature_id_set_of_tree tree in
     Array.fill gamma_leaf 0 num_observations tree;
@@ -352,7 +358,7 @@ let mk_eval num_observations =
 
 
 let rec shrink alpha = function
-  | `Leaf gamma ->  `Leaf (alpha *. gamma)
+  | `Leaf gamma ->  `Leaf (Array.map (fun f -> alpha *. f) gamma)
 
   | `CategoricalNode cn ->
     let cn_left_tree = shrink alpha cn.cn_left_tree in

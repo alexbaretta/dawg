@@ -41,7 +41,7 @@ type ifeature <ocaml_biniou module="Dog_b" ocaml_json module="Dog_j">= abstract
 
 type point = {
   (* what is the value of the piecewise function at the split? *)
-  s_gamma : float ;
+  s_gamma : float list <ocaml repr="array">;
 
   (* how many observations does the split cover? *)
   s_n : int ;

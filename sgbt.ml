@@ -36,7 +36,7 @@ type t = {
 
   (* how do we evaluate a tree over all the observations in the
      training set? *)
-  eval : (Dog_t.feature_id -> Feat.afeature) -> Model_t.l_tree -> float array;
+  eval : Tree.eval;
 
   (* how do we create random paritions of the training set (and
      subsets thereof) ? *)
@@ -373,7 +373,7 @@ let learn conf =
         new Square.splitter y_feature num_observations
   in
 
-  let eval = Tree.mk_eval num_observations in
+  let eval : Tree.eval = Tree.mk_eval num_observations in
 
   let t = {
     n;

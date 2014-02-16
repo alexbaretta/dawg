@@ -34,7 +34,7 @@ type ('a, 'b) ordinal_node = {
 } <ocaml field_prefix="on_">
 
 type ('a, 'b) tree = [
-  | Leaf of float
+  | Leaf of float list <ocaml repr="array">
   | CategoricalNode of ('a, 'b) categorical_node
   | OrdinalNode of ('a, 'b) ordinal_node
 ]
@@ -55,6 +55,7 @@ type ('a, 'b) logistic_model = {
   negative_category_opt : string option;
   features : feature list;
   trees : ('a, 'b) trees;
+  n_classes : int;
 } <ocaml field_prefix="bi_">
 
 type ('a, 'b) regression_model = {

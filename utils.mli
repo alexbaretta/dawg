@@ -48,3 +48,8 @@ module List : sig
   include module type of List
   val iteri : (int -> 'a -> unit) -> 'a list -> unit
 end
+
+module Array : sig
+  include module type of Array
+  val map2 : ('a -> 'b -> 'c) -> 'a array -> 'b array -> 'c array
+end

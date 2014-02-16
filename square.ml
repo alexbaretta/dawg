@@ -192,6 +192,7 @@ class splitter y_feature n =
 
     (* update [f] and [zwl] based on [gamma] *)
     method boost gamma : [ `NaN | `Ok ] =
+      assert(Array.length gamma = 1);
       let last_nan = ref None in
       Array.iteri (
         fun i gamma_i ->
@@ -210,7 +211,7 @@ class splitter y_feature n =
           z.(i) <- zi;
           l.(i) <- li;
 
-      ) gamma;
+      ) gamma.(0);
       match !last_nan with
         | Some _ -> `NaN
         | None -> `Ok
@@ -348,14 +349,14 @@ class splitter y_feature n =
               if is_total_loss_smaller then
                 let left = {
                   s_n = left_n ;
-                  s_gamma = left_gamma ;
+                  s_gamma = [| left_gamma |] ;
                   s_loss = loss_left;
                 }
                 in
 
                 let right = {
                   s_n = right_n ;
-                  s_gamma = right_gamma ;
+                  s_gamma = [| right_gamma |] ;
                   s_loss = loss_right;
                 }
                 in
@@ -439,14 +440,14 @@ class splitter y_feature n =
               if is_total_loss_smaller then
                 let left = {
                   s_n = left_n ;
-                  s_gamma = left_gamma ;
+                  s_gamma = [| left_gamma |] ;
                   s_loss = loss_left;
                 }
                 in
 
                 let right = {
                   s_n = right_n ;
-                  s_gamma = right_gamma ;
+                  s_gamma = [| right_gamma |];
                   s_loss = loss_right;
                 }
                 in
@@ -506,7 +507,7 @@ class splitter y_feature n =
       done;
       assert (!nn > 0); (* TODO *)
       let gamma0 = !sum_y /. (float !nn) in
-      `Leaf gamma0
+      `Leaf [| gamma0 |]
 
     method write_model re_trees re_features out_buf =
       let open Model_t in

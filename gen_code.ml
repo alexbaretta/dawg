@@ -102,7 +102,10 @@ let rec py_code_of_tree = function
     ]
 
   | `Leaf leaf ->
-    `Line (sp "r += %.17g" leaf)
+    if Array.length leaf = 1 then
+      `Line (sp "r += %.17g" leaf.(0))
+    else
+      assert false (* TODO *)
 
 let string_of_direction = function
   | `Left  -> "T"

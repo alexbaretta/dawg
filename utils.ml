@@ -177,3 +177,15 @@ module List = struct
       | [] -> ()
     in iteri 0 l
 end
+
+
+module Array = struct
+  include Array
+
+  let map2 f a1 a2 =
+    let l1 = Array.length a1 in
+    let l2 = Array.length a2 in
+    if l1 <> l2 then
+      Printf.ksprintf invalid_arg "Utils.Array.map2 <%d> <%d>" l1 l2;
+    Array.init l1 (fun i -> f a1.(i) a2.(i))
+end

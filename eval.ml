@@ -64,12 +64,13 @@ let div_opt x y =
     | _, None -> None
     | Some x, Some y -> Some (x /. y)
 
-let update_importance leaf branch branch_size feature_id_to_importance =
+let update_importance gammas branch branch_size feature_id_to_importance =
   (* the leaf value get's equally divided among all the features along
      the branch *)
   if branch_size = 0 then
     feature_id_to_importance
   else
+    let leaf = Array.fold_left (+.) 0.0 gammas in
     let score = abs_float (leaf /. (float branch_size)) in
     let sign =
       if leaf < 0.0 then
@@ -318,13 +319,13 @@ let rec eval_tree get branch branch_size = function
 let eval_tree get tree =
   eval_tree get [] 0 tree
 
-let eval_trees get feature_id_to_importance trees =
+let eval_trees n_models get feature_id_to_importance trees =
   List.fold_left (
     fun (sum, map) tree ->
-      let f, branch, branch_size = eval_tree get tree in
-      let map = update_importance f branch branch_size map in
-      sum +. f, map
-  ) (0.0, feature_id_to_importance) trees
+      let fs, branch, branch_size = eval_tree get tree in
+      let map = update_importance fs branch branch_size map in
+      Utils.Array.map2 (+.) sum fs, map
+  ) ((Array.create n_models 0.0), feature_id_to_importance) trees
 
 
 type categorical_entry = {
@@ -528,10 +529,9 @@ let model_eval
   let model_s = Mikmatch.Text.file_contents model_file_path in
   let model = Model_j.c_model_of_string model_s in
 
-  let transform, trees, features =
+  let transform, n_models, trees, features =
     match positive_category_opt, model with
       | Some positive_category, `Logistic logistic -> (
-
           let transform =
             if positive_category = logistic.bi_positive_category then
               (* user requests the model's notion of positive; nothing to
@@ -552,11 +552,12 @@ let model_eval
                   (* negative category is anonymous; so any string will do *)
                   invert
           in
-          transform, logistic.bi_trees, logistic.bi_features
+          let n_classes = logistic.bi_n_classes - 1 in
+          transform, n_classes, logistic.bi_trees, logistic.bi_features
         )
 
       | None, `Square square ->
-        noop, square.re_trees, square.re_features
+        noop, 1, square.re_trees, square.re_features
 
       | Some _, `Square _ ->
         pr "file %S contains a regression model, not a logistic model as \
@@ -604,9 +605,10 @@ let model_eval
 
         let is_ok, feature_id_to_importance =
           try
-            let f, feature_id_to_importance = eval_trees (get row)
+            let fs, feature_id_to_importance = eval_trees n_models (get row)
                 feature_id_to_importance trees in
-            fprintf pch "%f\n" (transform f);
+            Array.iter (fun f -> fprintf pch "%f " (transform f)) fs;
+            fprintf pch "\n";
             true, feature_id_to_importance
           with
             | TypeMismatch (feature_id, value) ->

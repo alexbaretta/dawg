@@ -19,7 +19,7 @@ type metrics = {
 class type splitter = object
   method clear : unit
   method best_split : Feat.afeature -> Proto_t.loss_split_opt
-  method boost : float array -> [ `NaN | `Ok ]
+  method boost : float array array -> [ `NaN | `Ok ]
   method update_with_subset : bool array -> unit
   method first_tree : bool array -> Model_t.l_tree
   method metrics : (int -> bool) -> metrics

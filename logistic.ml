@@ -444,6 +444,7 @@ class splitter binarization_threshold_opt y_feature n =
 
     (* update [f] and [zwl] based on [gamma] *)
     method boost gamma : [ `NaN | `Ok ] =
+      assert(Array.length gamma = 1);
       let last_nan = ref None in
       Array.iteri (
         fun i gamma_i ->
@@ -463,7 +464,7 @@ class splitter binarization_threshold_opt y_feature n =
           w.(i) <- wi;
           l.(i) <- li;
 
-      ) gamma;
+      ) gamma.(0);
       match !last_nan with
         | Some _ -> `NaN
         | None -> `Ok
@@ -609,14 +610,14 @@ class splitter binarization_threshold_opt y_feature n =
               if is_total_loss_smaller then
                 let left = {
                   s_n = left_n ;
-                  s_gamma = left_gamma ;
+                  s_gamma = [| left_gamma |] ;
                   s_loss = loss_left;
                 }
                 in
 
                 let right = {
                   s_n = right_n ;
-                  s_gamma = right_gamma ;
+                  s_gamma = [| right_gamma |] ;
                   s_loss = loss_right;
                 }
                 in
@@ -708,14 +709,14 @@ class splitter binarization_threshold_opt y_feature n =
               if is_total_loss_smaller then
                 let left = {
                   s_n = left_n ;
-                  s_gamma = left_gamma ;
+                  s_gamma = [| left_gamma |] ;
                   s_loss = loss_left;
                 }
                 in
 
                 let right = {
                   s_n = right_n ;
-                  s_gamma = right_gamma ;
+                  s_gamma = [| right_gamma |] ;
                   s_loss = loss_right;
                 }
                 in
@@ -825,7 +826,7 @@ class splitter binarization_threshold_opt y_feature n =
         raise Loss.BadTargetDistribution
       else
         let gamma0 = 0.5 *. (log (float n_true /. float n_false)) in
-        `Leaf gamma0
+        `Leaf [| gamma0 |]
 
     method write_model trees features out_buf =
       let open Model_t in
@@ -834,6 +835,7 @@ class splitter binarization_threshold_opt y_feature n =
         bi_negative_category_opt = negative_category_opt;
         bi_trees = trees;
         bi_features = features;
+        bi_n_classes = 2;
       } in
       Model_j.write_c_model out_buf model
 
