@@ -55,8 +55,14 @@ type ('a, 'b) logistic_model = {
   negative_category_opt : string option;
   features : feature list;
   trees : ('a, 'b) trees;
-  n_classes : int;
 } <ocaml field_prefix="bi_">
+
+type ('a, 'b) multiclass_model = {
+  base_category : string;
+  features : feature list;
+  trees : ('a, 'b) trees;
+  n_classes : int
+} <ocaml field_prefix="mc_">
 
 type ('a, 'b) regression_model = {
   features : feature list;
@@ -65,6 +71,7 @@ type ('a, 'b) regression_model = {
 
 (* this representation is used in the process of learning *)
 type l_logistic_model   = (int, direction_array) logistic_model
+type l_multiclass_model = (int, direction_array) multiclass_model
 type l_regression_model = (int, direction_array) regression_model
 type l_trees            = (int, direction_array) trees
 type l_tree             = (int, direction_array) tree
@@ -72,8 +79,13 @@ type l_tree             = (int, direction_array) tree
 (* this more compact representaiton is used for serializing and
    evaluating models outside of the learner *)
 type c_logistic_model   = (float, direction_rle) logistic_model
+type c_multiclass_model = (float, direction_rle) multiclass_model
 type c_regression_model = (float, direction_rle) regression_model
 type c_trees            = (float, direction_rle) trees
 type c_tree             = (float, direction_rle) tree
 
-type c_model = [ Logistic of c_logistic_model | Square of c_regression_model ]
+type c_model = [
+| Logistic of c_logistic_model
+| Multiclass of c_multiclass_model
+| Square of c_regression_model
+]

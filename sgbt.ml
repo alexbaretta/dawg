@@ -4,7 +4,7 @@ let pr = Printf.printf
 
 let random_seed = [| 9271 ; 12074; 3; 12921; 92; 763 |]
 
-type loss_type = [ `Logistic | `Square ]
+type loss_type = [ `Logistic | `Multiclass | `Square ]
 
 type conf = {
   loss_type : loss_type;
@@ -368,6 +368,9 @@ let learn conf =
     match conf.loss_type with
       | `Logistic ->
         new Logistic.splitter
+          conf.binarization_threshold_opt y_feature num_observations
+      | `Multiclass ->
+        new Multiclass.splitter
           conf.binarization_threshold_opt y_feature num_observations
       | `Square ->
         new Square.splitter y_feature num_observations

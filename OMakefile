@@ -69,6 +69,7 @@ FILES[] =
   rle
   dense
   logistic
+  multiclass
   loss
   sgbt
   learn

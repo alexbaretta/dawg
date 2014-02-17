@@ -339,7 +339,7 @@ let py_eval_function features trees model kind ~input_file_path ~model_md5 =
 
   let import_stmt =
     match kind with
-      | `Logistic _ ->
+      | `Logistic _ | `Multiclass _ ->
         (* need math.exp *)
         `Line "from math import exp"
       | `Square ->
@@ -358,6 +358,7 @@ let py_eval_function features trees model kind ~input_file_path ~model_md5 =
             [`Line "r = 1. / (1. + exp( -2. * r ))"; return_stmt ]
         in
         `Inline lines
+      | `Multiclass _ -> assert false (* TODO *)
 
       | `Square ->
         `Inline [return_stmt] (* noop *)
@@ -411,6 +412,8 @@ let gen input_file_path output_file_path_opt positive_category_opt =
     match model with
       | `Logistic { bi_trees; bi_features } ->
         bi_trees, bi_features
+      | `Multiclass { mc_trees; mc_features } ->
+        mc_trees, mc_features
       | `Square { re_trees; re_features } ->
         re_trees, re_features
   in
@@ -437,6 +440,7 @@ let gen input_file_path output_file_path_opt positive_category_opt =
             | None, _ ->
               `Logistic false
         )
+      | `Multiclass _ -> `Multiclass false
       | `Square _ ->
         match positive_category_opt with
           | Some _ ->

@@ -552,9 +552,19 @@ let model_eval
                   (* negative category is anonymous; so any string will do *)
                   invert
           in
-          let n_classes = logistic.bi_n_classes - 1 in
-          transform, n_classes, logistic.bi_trees, logistic.bi_features
+          let n_models = 1 in
+          transform, n_models, logistic.bi_trees, logistic.bi_features
         )
+
+      | None, `Multiclass multiclass ->
+          let transform = normal in
+          let n_models = multiclass.mc_n_classes - 1 in
+          transform, n_models, multiclass.mc_trees, multiclass.mc_features
+
+      | Some _, `Multiclass multiclass ->
+        pr "file %S contains a multiclass model, not a logistic model as \
+            implied by the positive category argument\n%!" model_file_path;
+        exit 1
 
       | None, `Square square ->
         noop, 1, square.re_trees, square.re_features

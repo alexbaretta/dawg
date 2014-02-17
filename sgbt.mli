@@ -1,4 +1,4 @@
-type loss_type = [ `Logistic | `Square ]
+type loss_type = [ `Logistic | `Multiclass | `Square ]
 
 type conf = {
   loss_type : loss_type;
