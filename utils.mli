@@ -52,4 +52,5 @@ end
 module Array : sig
   include module type of Array
   val map2 : ('a -> 'b -> 'c) -> 'a array -> 'b array -> 'c array
+  val foldi_left : ('a -> int -> 'b -> 'a) -> 'a -> 'b array -> 'a
 end

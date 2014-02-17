@@ -188,4 +188,12 @@ module Array = struct
     if l1 <> l2 then
       Printf.ksprintf invalid_arg "Utils.Array.map2 <%d> <%d>" l1 l2;
     Array.init l1 (fun i -> f a1.(i) a2.(i))
+
+  let foldi_left f accu a =
+    let l = Array.length a in
+    let rec fold accu i =
+      if i >= l then accu else
+        fold (f accu i a.(i)) (succ i)
+    in
+    fold accu 0
 end

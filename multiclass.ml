@@ -52,6 +52,13 @@ let probability f =
   let ef2 = exp f2 in
   1. /. ( 1. +. ef2 )
 
+let max_index a =
+  let (i_max, _) =
+    Utils.Array.foldi_left (fun ((_,max_value) as accu) i value ->
+      if value > max_value then i, value else accu
+    ) (0, a.(0)) a
+  in
+  i_max
 
 type metrics = {
   n : int;
@@ -93,230 +100,105 @@ let bool_to_minus_plus_one = function
 
 let y_array_of_cat n cat =
   let open Dog_t in
-  let y = Array.create n nan in
-  if cat.c_cardinality <> 2 then
-    raise Loss.WrongTargetType;
+  let n_classes = cat.c_cardinality in
+  let y = Array.create n [||] in
+
+  let to_plus_minus_one_array value =
+    Array.init n_classes (fun i -> if i = value then 1.0 else -1.0)
+  in
+
+  let () = match cat.c_vector with
+    | `RLE (rle:Vec.t) ->
+      Rlevec.iter rle (
+        fun ~index ~length ~value ->
+          let mp_one = to_plus_minus_one_array value in
+          for i = index to index + length - 1 do
+            y.(i) <- mp_one
+          done
+      )
+
+    | `Dense (vec:Vec.t) ->
+      let width = Utils.num_bytes cat.c_cardinality in
+      Dense.iter ~width vec (
+        fun ~index ~value ->
+          let mp_one = to_plus_minus_one_array value in
+          y.(index) <- mp_one
+      )
+  in
 
   match cat.c_anonymous_category with
-    | Some anon_value -> (
-        assert (anon_value = 1 || anon_value = 0 );
-        (* we want the anonymous category to be the negative
-           one, and the named category to be positive *)
-        let to_plus_minus_one value =
-          if value = anon_value then
-            -.1.0
-          else
-            1.0
-        in
-        match cat.c_vector with
-          | `RLE (rle:Vec.t) ->
-            Rlevec.iter rle (
-              fun ~index ~length ~value ->
-                let mp_one = to_plus_minus_one value in
-                for i = index to index + length - 1 do
-                  y.(i) <- mp_one
-                done
-            );
+    | Some anon_value ->
+      y, n_classes, anon_value, None, cat.c_categories
 
-          | `Dense (vec:Vec.t) ->
-            let width = Utils.num_bytes cat.c_cardinality in
-            Dense.iter ~width vec (
-              fun ~index ~value ->
-                let mp_one = to_plus_minus_one value in
-                y.(index) <- mp_one
-            );
-      );
-      let named_category =
-        match cat.c_categories with
-          | [ cat ] -> cat
-          | _ -> assert false
-      in
-      y, named_category, None
-
-    | None -> (
-        (* both categories are named; arbitrarily pick one as positive *)
-        match cat.c_vector with
-          | `RLE rle ->
-            Rlevec.iter rle (
-              fun ~index ~length ~value ->
-                let mp_one = zero_one_to_minus_plus_one value in
-                for i = index to index + length - 1 do
-                  y.(i) <- mp_one
-                done
-            );
-
-          | `Dense vec ->
-            let width = Utils.num_bytes cat.c_cardinality in
-            Dense.iter ~width vec (
-              fun ~index ~value ->
-                let mp_one = zero_one_to_minus_plus_one value in
-                y.(index) <- mp_one
-            );
-      );
+    | None ->
       match cat.c_categories with
-        | [ cat_0; cat_1 ] ->
-          y, cat_1, Some cat_0
+        | hd :: tl ->
+          y, n_classes, 0, Some hd, tl
 
         | _ -> assert false
 
 let y_array_of_ord n ord =
   let open Dog_t in
   let { o_vector; o_breakpoints; o_cardinality } = ord in
-  let y = Array.create n nan in
-  let map, positive_category, negative_category_opt =
-    if o_cardinality = 2 then
-      match o_breakpoints with
-        | `Float breakpoints -> (
-            match breakpoints with
-              | [v0; v1] ->
-                zero_one_to_minus_plus_one,
-                string_of_float v1,
-                Some (string_of_float v0)
-              | _ -> assert false
-          )
+  let n_classes = o_cardinality in
+  let y = Array.create n [||] in
 
-        | `Int breakpoints -> (
-            match breakpoints with
-              | [v0; v1] ->
-                zero_one_to_minus_plus_one,
-                string_of_int v1,
-                Some (string_of_int v0)
-              | _ -> assert false
-          )
-    else
-      raise Loss.WrongTargetType
+  let to_plus_minus_one_array value =
+    Array.init n_classes (fun i -> if i = value then 1.0 else -1.0)
   in
 
-  (match o_vector with
-    | `RLE rle -> (
-        match o_breakpoints with
-          | `Float breakpoints ->
-            Rlevec.iter rle (
-              fun ~index ~length ~value ->
-                let mp_one = map value in
-                for i = index to index + length - 1 do
-                  y.(i) <- mp_one
-                done
-            );
-
-          | `Int breakpoints ->
-            Rlevec.iter rle (
-              fun ~index ~length ~value ->
-                let mp_one = map value in
-                for i = index to index + length - 1 do
-                  y.(i) <- mp_one
-                done
-            );
+  let () = match o_vector with
+    | `RLE (rle:Vec.t) ->
+      Rlevec.iter rle (
+        fun ~index ~length ~value ->
+          let mp_one = to_plus_minus_one_array value in
+          for i = index to index + length - 1 do
+            y.(i) <- mp_one
+          done
       )
 
-    | `Dense vec -> (
-        let width = Utils.num_bytes o_cardinality in
-        match o_breakpoints with
-          | `Float breakpoints ->
-            Dense.iter ~width vec (
-              fun ~index ~value ->
-                let mp_one = map value in
-                y.( index ) <- mp_one
-            );
-
-          | `Int breakpoints ->
-            Dense.iter ~width vec (
-              fun ~index ~value ->
-                let mp_one = map value in
-                y.( index ) <- mp_one
-            );
+    | `Dense (vec:Vec.t) ->
+      let width = Utils.num_bytes o_cardinality in
+      Dense.iter ~width vec (
+        fun ~index ~value ->
+          let mp_one = to_plus_minus_one_array value in
+          y.(index) <- mp_one
       )
-  );
-  y, positive_category, negative_category_opt
-
-let y_array_of_binarize_ord binarization_threshold n ord =
-  let open Dog_t in
-  let { o_vector; o_breakpoints; o_cardinality } = ord in
-  let y = Array.create n nan in
-  let map, positive_category, negative_category_opt =
-    match o_breakpoints, binarization_threshold with
-      | `Float breakpoints, `GTE th ->
-        let breakpoints = Array.of_list breakpoints in
-        (fun i -> breakpoints.(i) >= th), "GTE", Some "LT"
-      | `Float breakpoints, `LTE th ->
-        let breakpoints = Array.of_list breakpoints in
-        (fun i -> breakpoints.(i) >= th), "LTE", Some "GT"
-
-      | `Int breakpoints, `GTE th ->
-        let breakpoints = Array.of_list breakpoints in
-        (fun i -> float breakpoints.(i) >= th), "GTE", Some "LT"
-      | `Int breakpoints, `LTE th ->
-        let breakpoints = Array.of_list breakpoints in
-        (fun i -> float breakpoints.(i) >= th), "LTE", Some "GT"
   in
 
-  (match o_vector with
-    | `RLE rle -> (
-        match o_breakpoints with
-          | `Float breakpoints ->
-            Rlevec.iter rle (
-              fun ~index ~length ~value ->
-                let mp_one = bool_to_minus_plus_one (map value) in
-                for i = index to index + length - 1 do
-                  y.(i) <- mp_one
-                done
-            );
+  let classes = match o_breakpoints with
+    | `Float breakpoints -> List.map string_of_float breakpoints
+    | `Int breakpoints -> List.map string_of_int breakpoints
+  in
 
-          | `Int breakpoints ->
-            Rlevec.iter rle (
-              fun ~index ~length ~value ->
-                let mp_one = bool_to_minus_plus_one (map value) in
-                for i = index to index + length - 1 do
-                  y.(i) <- mp_one
-                done
-            );
-      )
+  match classes with
+    | hd :: tl ->
+      y, n_classes, 0, Some hd, tl
 
-    | `Dense vec -> (
-        let width = Utils.num_bytes o_cardinality in
-        match o_breakpoints with
-          | `Float breakpoints ->
-            Dense.iter ~width vec (
-              fun ~index ~value ->
-                let mp_one = bool_to_minus_plus_one (map value) in
-                y.( index ) <- mp_one
-            );
-
-          | `Int breakpoints ->
-            Dense.iter ~width vec (
-              fun ~index ~value ->
-                let mp_one = bool_to_minus_plus_one (map value) in
-                y.( index ) <- mp_one
-            );
-      )
-  );
-  y, positive_category, negative_category_opt
+    | _ -> assert false
 
 
-let y_array_of_feature binarization_threshold_opt y_feature n =
+let y_array_of_feature y_feature n =
   (* convert bools to {-1,+1} *)
-  let y, p, n_opt =
+  let (y, _, _, _, _) as res =
     match y_feature with
-      | `Cat _ when binarization_threshold_opt <> None ->
-        raise Loss.WrongTargetType
       | `Cat cat -> y_array_of_cat n cat
-      | `Ord ord ->
-        match binarization_threshold_opt with
-          | None -> y_array_of_ord n ord
-          | Some th -> y_array_of_binarize_ord th n ord
+      | `Ord ord -> y_array_of_ord n ord
   in
   assert (
     try
-      for i = 0 to n-1 do
-        match classify_float y.(i) with
-          | FP_normal -> ()
-          | _ -> raise Sys.Break
-      done;
+      Array.iter (fun y_i ->
+        Array.iter (fun y_i_j ->
+          match classify_float y_i_j with
+            | FP_normal -> ()
+            | _ -> raise Sys.Break
+        ) y_i
+      ) y;
       true
     with Sys.Break ->
       false
   );
-  y, p, n_opt
+  res
 
 module Aggregate = struct
   type t = {
@@ -347,14 +229,14 @@ let updated_loss ~gamma  ~sum_l ~sum_z ~sum_w =
 
 exception EmptyFold
 
-class splitter binarization_threshold_opt y_feature n =
-  let y, positive_category, negative_category_opt =
-    y_array_of_feature binarization_threshold_opt y_feature n in
+class splitter y_feature n =
+  let y, n_classes, base_value, base_category_opt, categories =
+    y_array_of_feature y_feature n in
 
   let z = Array.create n 0.0 in
   let w = Array.create n 0.0 in
   let l = Array.create n 0.0 in
-  let f = Array.create n 0.0 in
+  let f = Array.init n (fun _ -> Array.create n_classes 0.0) in
 
   let n1 = n + 1 in
 
@@ -429,7 +311,7 @@ class splitter binarization_threshold_opt y_feature n =
         z.(i) <- 0.0;
         w.(i) <- 0.0;
         l.(i) <- 0.0;
-        f.(i) <- 0.0;
+        f.(i) <- Array.create n_classes 0.0;
         cum_z.(i) <- 0.0;
         cum_w.(i) <- 0.0;
         cum_l.(i) <- 0.0;
@@ -448,23 +330,26 @@ class splitter binarization_threshold_opt y_feature n =
       let last_nan = ref None in
       Array.iteri (
         fun i gamma_i ->
+          Array.iteri (
+            fun j_class gamma_i_class ->
 
-          (* update [f.(i)] *)
-          f.(i) <- f.(i) +. gamma_i;
+              (* update [f.(i)] *)
+              let f' = f.(i).(j_class) +. gamma_i_class in
+              f.(i).(j_class) <- f';
 
-          let li, zi, wi =
-            match logit ~f:f.(i) ~y:y.(i) with
-              | `Number lzw -> lzw
-              | `NaN ->
-                last_nan := Some i;
-                (nan,nan,nan)
-          in
+              let li, zi, wi =
+                match logit ~f:f' ~y:y.(i).(j_class) with
+                  | `Number lzw -> lzw
+                  | `NaN ->
+                    last_nan := Some i;
+                    (nan,nan,nan)
+              in
 
-          z.(i) <- zi;
-          w.(i) <- wi;
-          l.(i) <- li;
-
-      ) gamma.(0);
+              z.(i) <- zi;
+              w.(i) <- wi;
+              l.(i) <- li;
+          ) gamma_i
+      ) gamma;
       match !last_nan with
         | Some _ -> `NaN
         | None -> `Ok
@@ -734,41 +619,35 @@ class splitter binarization_threshold_opt y_feature n =
           !best_split
 
     method metrics mem =
-      let wrk_tt = ref 0 in
-      let wrk_tf = ref 0 in
-      let wrk_ft = ref 0 in
-      let wrk_ff = ref 0 in
+      let wrk_correct = ref 0 in
+      let wrk_miss = ref 0 in
       let wrk_loss = ref 0.0 in
       let wrk_nn = ref 0 in
 
-      let val_tt = ref 0 in
-      let val_tf = ref 0 in
-      let val_ft = ref 0 in
-      let val_ff = ref 0 in
+      let val_correct = ref 0 in
+      let val_miss = ref 0 in
       let val_loss = ref 0.0 in
       let val_nn = ref 0 in
 
       for i = 0 to n-1 do
         if mem i then
           (* working folds *)
+          let predicted_class = max_index f in
           let cell =
-            match y.(i) >= 0.0, f.(i) >= 0.0 with
-              | true , true  -> wrk_tt
-              | true , false -> wrk_tf
-              | false, true  -> wrk_ft
-              | false, false -> wrk_ff
+            match y.(i).(predicted_class) >= 0.0 with
+              | true  -> wrk_correct
+              | false -> wrk_miss
           in
           incr cell;
           incr wrk_nn;
           wrk_loss := !wrk_loss +. l.(i)
         else
           (* validation fold *)
+          let predicted_class = max_index f in
           let cell =
-            match y.(i) >= 0.0, f.(i) >= 0.0 with
-              | true , true  -> val_tt
-              | true , false -> val_tf
-              | false, true  -> val_ft
-              | false, false -> val_ff
+            match y.(i).(predicted_class) >= 0.0 with
+              | true  -> wrk_correct
+              | false -> wrk_miss
           in
           incr cell;
           incr val_nn;
@@ -779,30 +658,26 @@ class splitter binarization_threshold_opt y_feature n =
       if !wrk_nn > 0 && !val_nn > 0 then
         let wrk_nf = float !wrk_nn in
         let wrk_n = !wrk_nn in
-        let wrk_tt = (float !wrk_tt) /. wrk_nf in
-        let wrk_tf = (float !wrk_tf) /. wrk_nf in
-        let wrk_ft = (float !wrk_ft) /. wrk_nf in
-        let wrk_ff = (float !wrk_ff) /. wrk_nf in
+        let wrk_correct = (float !wrk_correct) /. wrk_nf in
+        let wrk_miss = (float !wrk_miss) /. wrk_nf in
         let wrk_loss = !wrk_loss /. wrk_nf in
 
         let val_nf = float !val_nn in
         let val_n = !val_nn in
-        let val_tt = (float !val_tt) /. val_nf in
-        let val_tf = (float !val_tf) /. val_nf in
-        let val_ft = (float !val_ft) /. val_nf in
-        let val_ff = (float !val_ff) /. val_nf in
+        let val_correct = (float !val_correct) /. val_nf in
+        let val_miss = (float !val_miss) /. val_nf in
         let val_loss = !val_loss /. val_nf in
 
-        let val_frac_misclassified = val_tf +. val_ft in
+        let val_frac_misclassified = val_miss in
         assert ( val_frac_misclassified >= 0. );
 
         let has_converged = val_frac_misclassified = 0.0 in
 
-        let s_wrk = Printf.sprintf "% 8d %.4e %.4e %.4e %.4e %.4e"
-            wrk_n wrk_loss wrk_tt wrk_tf wrk_ft wrk_ff in
+        let s_wrk = Printf.sprintf "% 8d %.4e %.4e %.4e"
+            wrk_n wrk_loss wrk_correct wrk_miss in
 
-        let s_val = Printf.sprintf "% 8d %.4e %.4e %.4e %.4e %.4e"
-            val_n val_loss val_tt val_tf val_ft val_ff in
+        let s_val = Printf.sprintf "% 8d %.4e %.4e %.4e"
+            val_n val_loss val_correct val_miss in
 
         Loss.( {s_wrk; s_val; has_converged; val_loss} )
 
@@ -811,30 +686,29 @@ class splitter binarization_threshold_opt y_feature n =
 
     method first_tree set : Model_t.l_tree =
       assert (Array.length set = n);
-      let n_true = ref 0 in
-      let n_false = ref 0 in
-      for i = 0 to n-1 do
-        if set.(i) then
-          match y.(i) with
-            |  1.0 -> incr n_true
-            | -1.0 -> incr n_false
-            | _ -> assert false
-      done;
-      let n_true = !n_true in
-      let n_false = !n_false in
-      if n_false = 0 || n_true = 0 then
-        raise Loss.BadTargetDistribution
-      else
-        let gamma0 = 0.5 *. (log (float n_true /. float n_false)) in
-        `Leaf [| gamma0 |]
+      let gamma0 = Array.init n_classes (fun j_class ->
+        let n_true = ref 0 in
+        let n_false = ref 0 in
+        for i = 0 to n-1 do
+          if set.(i) then
+            match y.(i).(j_class) with
+              |  1.0 -> incr n_true
+              | -1.0 -> incr n_false
+              | _ -> assert false
+        done;
+        let n_true = !n_true in
+        let n_false = !n_false in
+        0.5 *. (log (float n_true /. float n_false))
+      ) in
+      `Leaf gamma0
 
     method write_model trees features out_buf =
       let open Model_t in
-      let model = `Logistic {
-        bi_positive_category = positive_category;
-        bi_negative_category_opt = negative_category_opt;
-        bi_trees = trees;
-        bi_features = features;
+      let model = `Multiclass {
+        mc_base_category_opt = base_category_opt;
+        mc_trees = trees;
+        mc_features = features;
+        mc_n_classes = n_classes;
       } in
       Model_j.write_c_model out_buf model
 

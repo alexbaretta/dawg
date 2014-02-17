@@ -370,8 +370,7 @@ let learn conf =
         new Logistic.splitter
           conf.binarization_threshold_opt y_feature num_observations
       | `Multiclass ->
-        new Multiclass.splitter
-          conf.binarization_threshold_opt y_feature num_observations
+        new Multiclass.splitter y_feature num_observations
       | `Square ->
         new Square.splitter y_feature num_observations
   in

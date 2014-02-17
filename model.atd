@@ -58,7 +58,7 @@ type ('a, 'b) logistic_model = {
 } <ocaml field_prefix="bi_">
 
 type ('a, 'b) multiclass_model = {
-  base_category : string;
+  base_category_opt : string option;
   features : feature list;
   trees : ('a, 'b) trees;
   n_classes : int
