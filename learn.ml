@@ -124,6 +124,7 @@ let learn
   let loss_type =
     match loss_type_s with
       | "logistic"-> `Logistic
+      | "multiclass" -> `Multiclass
       | "square" -> `Square
       | _ ->
         pr "bad loss type %S" loss_type_s;
@@ -288,8 +289,9 @@ let commands =
     in
 
     let loss_type =
-      let doc = "the kind of model to learn: either \"logistic\" for binary \
-                 classifier, or \"square\" for regression" in
+      let doc = "the kind of model to learn: \"logistic\" for binary \
+                 classifier, \"multiclass\" for multiclass classifier, \
+                 or \"square\" for regression" in
       Arg.(value & opt string "logistic" &
            info ["l";"loss"] ~docv:"STRING" ~doc)
     in
