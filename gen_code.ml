@@ -75,34 +75,69 @@ let category_direction_ids_of_trees trees =
 
 
 (* translate a single tree into a code block *)
-let rec py_code_of_tree = function
-  | `OrdinalNode {
-      on_feature_id;
-      on_split;
-      on_left_tree;
-      on_right_tree } ->
-    `Inline [
-      `Line (sp "if ord_%d <= %.17g:" on_feature_id on_split);
-      `Block [py_code_of_tree on_left_tree];
-      `Line "else:";
-      `Block [py_code_of_tree on_right_tree];
-    ]
+let py_code_of_tree =
+  let rec code_of_tree = function
+    | `OrdinalNode {
+        on_feature_id;
+        on_split;
+        on_left_tree;
+        on_right_tree } ->
+       `Inline [
+          `Line (sp "if ord_%d <= %.17g:" on_feature_id on_split);
+          `Block [code_of_tree on_left_tree];
+          `Line "else:";
+          `Block [code_of_tree on_right_tree];
+        ]
 
-  | `CategoricalNode {
-      cn_feature_id;
-      cn_category_directions;
-      cn_left_tree;
-      cn_right_tree } ->
-    `Inline [
-      `Line (sp "if go_left_%d[ cat_id_%d ]:"
-               cn_category_directions cn_feature_id);
-      `Block [py_code_of_tree cn_left_tree];
-      `Line "else:";
-      `Block [py_code_of_tree cn_right_tree];
-    ]
+    | `CategoricalNode {
+         cn_feature_id;
+         cn_category_directions;
+         cn_left_tree;
+         cn_right_tree } ->
+       `Inline [
+          `Line (sp "if go_left_%d[ cat_id_%d ]:"
+                    cn_category_directions cn_feature_id);
+          `Block [code_of_tree cn_left_tree];
+          `Line "else:";
+          `Block [code_of_tree cn_right_tree];
+        ]
 
-  | `Leaf leaf ->
-    `Line (sp "r += %.17g" leaf)
+    | `Leaf leaf ->
+       `Line (sp "r += %.17g" leaf)
+  in code_of_tree
+
+let scala_code_of_tree =
+  let rec code_of_tree = function
+    | `OrdinalNode {
+        on_feature_id;
+        on_split;
+        on_left_tree;
+        on_right_tree } ->
+       `Inline [
+          `Line (sp "if (ord_%d <= %.17g) {" on_feature_id on_split);
+          `Block [code_of_tree on_left_tree];
+          `Line "} else {";
+          `Block [code_of_tree on_right_tree];
+          `Line "}";
+        ]
+
+    | `CategoricalNode {
+         cn_feature_id;
+         cn_category_directions;
+         cn_left_tree;
+         cn_right_tree } ->
+       `Inline [
+          `Line (sp "if (go_left_%d(cat_id_%d)) {"
+                    cn_category_directions cn_feature_id);
+          `Block [code_of_tree cn_left_tree];
+          `Line "} else {";
+          `Block [code_of_tree cn_right_tree];
+          `Line "}";
+        ]
+
+    | `Leaf leaf ->
+       `Line (sp "r += %.17g" leaf)
+  in code_of_tree
 
 let string_of_direction = function
   | `Left  -> "T"
@@ -110,14 +145,13 @@ let string_of_direction = function
 
 (* create a string consisting of comman seperated booleans ('T' or
    'F') , where each value answers 'go left?' *)
-let py_list_of_category_directions_rle rle =
+let list_of_category_directions_rle rle =
   let category_directions_rev =
     List.rev (Array.to_list (Model_utils.category_array_of_rle rle)) in
 
   let elements = String.concat ","
       (List.rev_map string_of_direction category_directions_rev) in
   elements
-
 
 exception AnonymousFeature of int (* feature id *)
 
@@ -230,6 +264,96 @@ let py_extract_feature_values features =
       lines :: code
   ) [] features
 
+let scala_extract_feature_values features =
+  List.fold_left (
+    fun code feature ->
+      let lines =
+        match feature with
+          | `OrdinalFeature { of_feature_id; of_feature_name_opt } ->
+            let feature_name =
+              match of_feature_name_opt with
+                | Some feature_name -> feature_name
+                | None -> raise (AnonymousFeature of_feature_id)
+            in
+            `Inline [
+              (* absence of a value in the python dictionary
+                 ["fv"] implicitly defines the value as [0.0] *)
+              `Line (sp "val ord_%d = try {" of_feature_id);
+              `Block [
+                (* convert the input to a float, or die trying *)
+                `Line (sp "fv(\"%s\").toDouble" feature_name);
+              ];
+              `Line "}";
+              `Line "catch { case exn : NoSuchElementException => ";
+              `Block [
+                `Line ("0.0")
+              ];
+              `Line "}";
+              empty_line
+            ]
+
+          | `CategoricalFeature {
+              cf_feature_id;
+              cf_feature_name_opt;
+              cf_categories;
+              cf_anonymous_category_index_opt
+            } ->
+
+            let feature_name =
+              match cf_feature_name_opt with
+                | Some feature_name -> feature_name
+                | None -> raise (AnonymousFeature cf_feature_id)
+            in
+
+            match cf_anonymous_category_index_opt with
+              | Some index ->
+                `Inline [
+                  (* absence of a value in the python dictionary
+                     ["fv"] implicitly defines the value as [index] *)
+                  `Line (sp "val cat_id_%d = try {" cf_feature_id);
+                  `Block [
+                    (* find the category string *)
+                    `Line (sp "val cat_%d = fv(\"%s\")"
+                             cf_feature_id feature_name);
+                    `Line (sp "cat_to_id_%d.getOrElse(cat_%d, { throw new UnknownCategory(\"%s\", cat_%d) }"
+                              cf_feature_id cf_feature_id feature_name cf_feature_id
+                          );
+                   ];
+                  `Line "}";
+                  `Line "catch { case exn : NoSuchElementException =>";
+                  `Block [
+                    (* category string not found; use the anonymous
+                       category index as the default *)
+                    `Line (sp "%d" index)
+                  ];
+                  `Line "}";
+                  empty_line
+                 ]
+
+              | None ->
+                (* here, anonymous categories are not allowed *)
+                `Inline [
+                  `Line (sp "val cat_id_%d = try {" cf_feature_id);
+                  `Block [
+                    `Line (sp "val cat_%d = fv(\"%s\")" cf_feature_id feature_name);
+                    `Line (sp "cat_to_id_%d.getOrElse(cat_%d, { throw new UnknownCategory(\"%s\", cat_%d) })"
+                              cf_feature_id cf_feature_id feature_name cf_feature_id
+                          );
+                   ];
+                  `Line "}";
+                  `Line "catch { case exn : NoSuchElementException => ";
+                  `Block [
+                    `Line (sp "throw new MissingCategoricalFeatureValue( \"%s\" )" feature_name);
+                  ];
+                  `Line "}";
+
+                  empty_line
+                ]
+
+      in
+      lines :: code
+  ) [] features
+
 (* for each categorical feature, define the mapping from category
    (string) to category id (integer), the latter being an index into the
    category directions array of booleans *)
@@ -262,12 +386,54 @@ let py_category_to_index {
         ) (0, []) cf_categories in
       sp "cat_to_id_%d = {%s}" cf_feature_id (String.concat "," bindings)
 
+let scala_category_to_index {
+    cf_feature_id;
+    cf_categories;
+    cf_anonymous_category_index_opt
+  } =
+  match cf_anonymous_category_index_opt with
+    | None ->
+      let _, bindings = List.fold_left (
+          fun (category_id, bindings) category ->
+            let bindings = (sp "\"%s\" -> %d" category category_id) :: bindings in
+            category_id + 1, bindings
+        ) (0, []) cf_categories in
+      (* pythong dictionary bound to a variable *)
+      sp "val cat_to_id_%d = Map(%s)" cf_feature_id (String.concat "," bindings)
+
+    | Some anon_index ->
+      let _, bindings = List.fold_left (
+          fun (category_id, bindings) category ->
+            let bindings =
+              if category_id = anon_index then
+                bindings
+              else
+                let binding = sp "\"%s\" -> %d" category category_id in
+                binding :: bindings
+            in
+            category_id + 1, bindings
+        ) (0, []) cf_categories in
+      sp "val cat_to_id_%d = Map(%s)" cf_feature_id (String.concat "," bindings)
+
 let py_category_to_index_stmts features =
   List.fold_left (
     fun code feature ->
       match feature with
         | `CategoricalFeature cf ->
           let line = `Line (py_category_to_index cf) in
+          line :: code
+
+        | `OrdinalFeature _ ->
+          code
+
+  ) [] features
+
+let scala_category_to_index_stmts features =
+  List.fold_left (
+    fun code feature ->
+      match feature with
+        | `CategoricalFeature cf ->
+          let line = `Line (scala_category_to_index cf) in
           line :: code
 
         | `OrdinalFeature _ ->
@@ -295,6 +461,11 @@ let py_exceptions = [
   ];
 ]
 
+let scala_exceptions = [
+  `Line "case class MissingCategoricalFeatureValue(feature_name : String) extends Exception";
+  `Line "case class UnknownCategory(feature_name : String, category : String) extends Exception";
+]
+
 let now_datetime_string () =
   let open Unix in
   let now = localtime (gettimeofday ()) in
@@ -309,6 +480,13 @@ let py_code_of_trees trees =
   let code = List.rev_map py_code_of_tree trees in
   `Block [
     `Line "r = 0.";
+    `Inline code;
+  ]
+
+let scala_code_of_trees trees =
+  let code = List.rev_map scala_code_of_tree trees in
+  `Block [
+    `Line "var r : Double = 0.0";
     `Inline code;
   ]
 
@@ -327,7 +505,7 @@ let py_eval_function features trees model kind ~input_file_path ~model_md5 =
      that require them *)
   let category_directions_lists = RLEMap.fold (
       fun category_directions_rle category_directions_id code ->
-        let elements = py_list_of_category_directions_rle
+        let elements = list_of_category_directions_rle
             category_directions_rle in
         let line =
           `Line (sp "go_left_%d = [%s]" category_directions_id elements) in
@@ -395,9 +573,107 @@ let py_eval_function features trees model kind ~input_file_path ~model_md5 =
     `Block [transform];
   ]
 
+let scala_eval_function features trees model kind ~input_file_path ~model_md5 =
+  let trees, category_directions_to_id =
+    category_direction_ids_of_trees trees in
+
+  (* code to define 'T' and 'F', aliases we use to save a few bytes in
+     the output code file. *)
+  let define_T_F = [
+    `Line "val T = true";
+    `Line "val F = false";
+  ] in
+
+  (* code to define the category directions lists for the tree nodes
+     that require them *)
+  let category_directions_lists = RLEMap.fold (
+      fun category_directions_rle category_directions_id code ->
+        let elements = list_of_category_directions_rle
+            category_directions_rle in
+        let line =
+          `Line (sp "val go_left_%d = List(%s)" category_directions_id elements) in
+        line :: code
+    ) category_directions_to_id [] in
+
+  let import_stmt =
+    match kind with
+      | `Logistic _ ->
+        (* need math.exp *)
+        `Line "import Math.exp"
+      | `Square ->
+        `Inline []
+  in
+
+  let transform =
+    let return_stmt = `Line "return r" in
+    match kind with
+      | `Logistic invert ->
+        let lines =
+          if invert then
+            (* only difference is sign on the [2] *)
+            [`Line "r = 1.0 / (1.0 + exp(  2.0 * r ))"; return_stmt ]
+          else
+            [`Line "r = 1.0 / (1.0 + exp( -2.0 * r ))"; return_stmt ]
+        in
+        `Inline lines
+
+      | `Square ->
+        `Inline [return_stmt] (* noop *)
+  in
+
+  let user_name =
+    try
+      Unix.getenv "USER"
+    with Not_found ->
+      sp "id=%d" (Unix.getuid ())
+  in
+
+  let comments = [
+      `Line (sp "// auto-generated by user %S on %s"
+               user_name (now_datetime_string ()));
+      `Line "// command-line invocation:";
+      `Line ("//    " ^ (String.concat " " (Array.to_list Sys.argv)));
+      `Line (sp "// input file: %s" (Utils.abspath input_file_path));
+      `Line (sp "// input file md5: %s" model_md5)
+  ] in
+
+  [
+    `Inline comments;
+    empty_line;
+    import_stmt;
+    empty_line;
+    `Inline scala_exceptions;
+    empty_line;
+    `Line "object Model {";
+    `Block [
+       (* `Line "def double(x : Any) : Double = x match {"; *)
+       (* `Block [ *)
+       (*    `Line "case x : Double => x"; *)
+       (*    `Line "case x : Float => x.toDouble"; *)
+       (*    `Line "case x : String => x.toDouble"; *)
+       (*    `Line "case x : Int => x.toDouble"; *)
+       (*    `Line "case x : Long => x.toDouble"; *)
+       (*    `Line "case x => x.toString.toDouble"; *)
+       (*  ]; *)
+       (* `Line("}"); *)
+       `Inline define_T_F;
+       empty_line;
+       `Inline category_directions_lists;
+       empty_line;
+       `Inline (scala_category_to_index_stmts features);
+       empty_line;
+       `Line "def eval_by_name( fv : Map[String,String] ) : Double = {";
+       `Block (scala_extract_feature_values features);
+       scala_code_of_trees trees;
+       `Block [transform];
+       `Line "}"
+     ];
+    `Line "}"
+  ]
 
 
-let gen input_file_path output_file_path_opt positive_category_opt =
+
+let gen_py input_file_path output_file_path_opt positive_category_opt =
   let model, model_md5 =
     let model_s = Mikmatch.Text.file_contents input_file_path in
     let model_md5 = Digest.(to_hex (string model_s)) in
@@ -455,11 +731,80 @@ let gen input_file_path output_file_path_opt positive_category_opt =
   Atd_indent.to_channel ouch code;
   close_out ouch
 
+let gen_scala input_file_path output_file_path_opt positive_category_opt =
+  let model, model_md5 =
+    let model_s = Mikmatch.Text.file_contents input_file_path in
+    let model_md5 = Digest.(to_hex (string model_s)) in
+    Model_j.c_model_of_string model_s, model_md5
+  in
+
+  let trees, features =
+    match model with
+      | `Logistic { bi_trees; bi_features } ->
+        bi_trees, bi_features
+      | `Square { re_trees; re_features } ->
+        re_trees, re_features
+  in
+
+  let kind =
+    match model with
+      | `Logistic { bi_positive_category; bi_negative_category_opt } -> (
+          match positive_category_opt, bi_negative_category_opt with
+            | Some positive_category, None ->
+              `Logistic (positive_category <> bi_positive_category)
+
+            | Some positive_category, Some bi_negative_category ->
+              if positive_category <> bi_positive_category &&
+                 positive_category <> bi_negative_category then (
+                Printf.printf "unknown target category %S\n%!"
+                  positive_category;
+                exit 1
+              );
+
+              `Logistic (
+                positive_category <> bi_positive_category &&
+                positive_category = bi_negative_category
+              )
+            | None, _ ->
+              `Logistic false
+        )
+      | `Square _ ->
+        match positive_category_opt with
+          | Some _ ->
+            Printf.printf "file %S contains a regression model, not a \
+                           logistic model as implied by the positive \
+                           category argument\n%!"
+              input_file_path;
+            exit 1
+          | None -> `Square
+  in
+  let code = scala_eval_function features trees model kind
+      ~input_file_path ~model_md5 in
+
+  let ouch =
+    match output_file_path_opt with
+      | Some path -> open_out path
+      | None -> stdout
+  in
+  Atd_indent.to_channel ouch code;
+  close_out ouch
+
 open Cmdliner
+
+type language = Python | Scala
+let gen = function
+  | Python -> gen_py
+  | Scala -> gen_scala
 
 let commands =
   let gen_cmd =
     let doc = "generate code to evaluate a model" in
+
+    let language =
+      let doc = "language (supported: python, scala)" in
+      Arg.(value & opt (enum [("python", Python); ("scala", Scala)]) Python &
+             info ["l";"language"] ~docv:"STRING" ~doc)
+    in
 
     let input_file_path =
       let doc = "path of input model file" in
@@ -478,7 +823,7 @@ let commands =
            info ["p";"positive"] ~docv:"STRING" ~doc)
     in
 
-    Term.(pure gen $ input_file_path $ output_file_path $ positive_category),
+    Term.(pure gen $ language $ input_file_path $ output_file_path $ positive_category),
     Term.info "gen" ~doc
   in
   [gen_cmd]
