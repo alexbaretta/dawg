@@ -281,7 +281,7 @@ let scala_extract_feature_values features =
               `Line (sp "val ord_%d = try {" of_feature_id);
               `Block [
                 (* convert the input to a float, or die trying *)
-                `Line (sp "fv(\"%s\").toDouble" feature_name);
+                `Line (sp "double(fv(\"%s\"))" feature_name);
               ];
               `Line "}";
               `Line "catch { case exn : NoSuchElementException => ";
@@ -313,7 +313,7 @@ let scala_extract_feature_values features =
                   `Line (sp "val cat_id_%d = try {" cf_feature_id);
                   `Block [
                     (* find the category string *)
-                    `Line (sp "val cat_%d = fv(\"%s\")"
+                    `Line (sp "val cat_%d = fv(\"%s\").toString"
                              cf_feature_id feature_name);
                     `Line (sp "cat_to_id_%d.getOrElse(cat_%d, { throw new UnknownCategory(\"%s\", cat_%d) }"
                               cf_feature_id cf_feature_id feature_name cf_feature_id
@@ -335,7 +335,7 @@ let scala_extract_feature_values features =
                 `Inline [
                   `Line (sp "val cat_id_%d = try {" cf_feature_id);
                   `Block [
-                    `Line (sp "val cat_%d = fv(\"%s\")" cf_feature_id feature_name);
+                    `Line (sp "val cat_%d = fv(\"%s\").toString" cf_feature_id feature_name);
                     `Line (sp "cat_to_id_%d.getOrElse(cat_%d, { throw new UnknownCategory(\"%s\", cat_%d) })"
                               cf_feature_id cf_feature_id feature_name cf_feature_id
                           );
@@ -646,23 +646,23 @@ let scala_eval_function features trees model kind ~input_file_path ~model_md5 =
     empty_line;
     `Line "object Model {";
     `Block [
-       (* `Line "def double(x : Any) : Double = x match {"; *)
-       (* `Block [ *)
-       (*    `Line "case x : Double => x"; *)
-       (*    `Line "case x : Float => x.toDouble"; *)
-       (*    `Line "case x : String => x.toDouble"; *)
-       (*    `Line "case x : Int => x.toDouble"; *)
-       (*    `Line "case x : Long => x.toDouble"; *)
-       (*    `Line "case x => x.toString.toDouble"; *)
-       (*  ]; *)
-       (* `Line("}"); *)
+       `Line "def double(x : Any) : Double = x match {";
+       `Block [
+          `Line "case x : Double => x";
+          `Line "case x : Float => x.toDouble";
+          `Line "case x : String => x.toDouble";
+          `Line "case x : Int => x.toDouble";
+          `Line "case x : Long => x.toDouble";
+          `Line "case x => throw new RuntimeException(s\"Bad value type: ${x.getClass.getName}\")";
+        ];
+       `Line("}");
        `Inline define_T_F;
        empty_line;
        `Inline category_directions_lists;
        empty_line;
        `Inline (scala_category_to_index_stmts features);
        empty_line;
-       `Line "def eval_by_name( fv : Map[String,String] ) : Double = {";
+       `Line "def eval_by_name( fv : Map[String,Any] ) : Double = {";
        `Block (scala_extract_feature_values features);
        scala_code_of_trees trees;
        `Block [transform];
