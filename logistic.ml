@@ -585,8 +585,8 @@ class splitter binarization_threshold_opt y_feature n =
             (* we can only have a split when the left and right
                approximations are based on one or more observations *)
 
-            if left_n > 0 &&
-               right_n > 0 &&
+            if left_n > 100 &&
+               right_n > 100 &&
                left.sum_w.(k) <> 0.0 &&
                right.sum_w.(k_1) <> 0.0
             then (
