@@ -257,7 +257,7 @@ let rec eval_partially_1 feature_id value = function
         cn_right_tree;
         cn_feature_id
       }
-
+  | (`LinearNode _) as ln -> ln
   | (`Leaf _) as leaf -> leaf
 
 
@@ -310,6 +310,9 @@ let rec add_feature_id_to_set set = function
     let set = add_feature_id_to_set set cn_right_tree in
     IntSet.add cn_feature_id set
 
+  | `LinearNode { ln_feature_id } ->
+    IntSet.add ln_feature_id set
+
 let feature_id_set_of_tree tree =
   add_feature_id_to_set IntSet.empty tree
 
@@ -353,6 +356,7 @@ let mk_eval num_observations =
         | `Leaf g ->  gamma.(i) <- g
         | `OrdinalNode _
         | `CategoricalNode _ -> assert false
+        | `LinearNode _ -> assert false
     done;
     gamma
 
@@ -369,3 +373,6 @@ let rec shrink alpha = function
     let on_left_tree = shrink alpha on.on_left_tree in
     let on_right_tree = shrink alpha on.on_right_tree in
     `OrdinalNode { on with on_left_tree; on_right_tree }
+
+  | `LinearNode ln ->
+    `LinearNode { ln with ln_coef = alpha *. ln.ln_coef }
