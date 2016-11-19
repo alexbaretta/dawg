@@ -217,7 +217,9 @@ let c_eval_function features trees model kind
     | Some x -> regularize_function_name x
     | None ->
       match input_file_path with
-      | RE (_* '/')? (_+ as name) (".mod"?) ->
+      | RE (_* '/')? (_+ as name) ("." [alnum]+) ->
+        regularize_function_name name
+      | RE (_* '/')? (_+ as name) ->
         regularize_function_name name
   in
   let trees, category_directions_to_id =
