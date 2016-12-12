@@ -187,7 +187,7 @@ class splitter max_gamma_opt weights y_feature n_rows num_observations =
       in_subset := [| |]
 
     (* update [f] and [zwl] based on [gamma] *)
-    method boost gamma : [ `NaN | `Ok ] =
+    method boost gamma : [ `NaN of int | `Ok ] =
       let last_nan = ref None in
       Array.iteri (
         fun i gamma_i ->
@@ -200,7 +200,7 @@ class splitter max_gamma_opt weights y_feature n_rows num_observations =
             let li = zi *. zi in
 
             (match classify_float zi with
-              | FP_normal -> ()
+              | FP_normal | FP_subnormal | FP_zero -> ()
               | _ -> last_nan := Some i
             );
 
@@ -209,7 +209,7 @@ class splitter max_gamma_opt weights y_feature n_rows num_observations =
           )
       ) gamma;
       match !last_nan with
-        | Some _ -> `NaN
+        | Some i -> `NaN i
         | None -> `Ok
 
     method update_with_subset in_subset_ =

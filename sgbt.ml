@@ -26,6 +26,7 @@ type conf = {
   feature_monotonicity : feature_monotonicity;
   exclude_nan_target : bool;
   exclude_inf_target : bool;
+  stochastic_gradient : bool;
 }
 
 type t = {
@@ -62,7 +63,7 @@ let reset t first_tree =
   let gamma = t.eval (Feat_map.a_find_by_id t.feature_map) first_tree in
   t.splitter#clear;
   (match t.splitter#boost gamma with
-    | `NaN -> assert false
+    | `NaN _ -> assert false
     | `Ok -> ()
   )
 
@@ -109,11 +110,16 @@ let rec learn_with_fold_rate conf t iteration =
   (* draw a random subset of this fold *)
   Sampler.shuffle t.sampler iteration.random_state;
   let { in_set; out_set } = iteration in
-  let in_subset = Sampler.array (
-      fun ~index ~value ->
-        (* sample half the data that is also in the current fold *)
-        in_set.(index) && value mod 2 = 0
-    ) t.sampler in
+  let in_subset =
+    if conf.stochastic_gradient then
+      Sampler.array (
+        fun ~index ~value ->
+          (* sample half the data that is also in the current fold *)
+          in_set.(index) && value mod 2 = 0
+      ) t.sampler
+    else
+      Sampler.array (fun ~index ~value -> true) t.sampler
+  in
 
   match Tree.make m 0 in_subset with
     | None ->
@@ -125,8 +131,8 @@ let rec learn_with_fold_rate conf t iteration =
       let gamma = t.eval (Feat_map.a_find_by_id t.feature_map) shrunken_tree in
 
       match t.splitter#boost gamma with
-        | `NaN -> (
-            Utils.pr "diverged: nan\n%!";
+        | `NaN i -> (
+            Utils.epr "[WARNING] diverged: nan at row %d\n%!" i;
             cut_learning_rate conf t iteration
           )
 

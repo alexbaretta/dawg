@@ -533,7 +533,7 @@ class splitter
       in_subset := [| |]
 
     (* update [f] and [zwl] based on [gamma] *)
-    method boost gamma : [ `NaN | `Ok ] =
+    method boost gamma : [ `NaN of int | `Ok ] =
       let last_nan = ref None in
       Array.iteri (
         fun i gamma_i ->
@@ -557,7 +557,7 @@ class splitter
           )
       ) gamma;
       match !last_nan with
-        | Some _ -> `NaN
+        | Some i -> `NaN i
         | None -> `Ok
 
     method update_with_subset in_subset_ =

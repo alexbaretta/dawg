@@ -70,6 +70,7 @@ let learn
     feature_id_negative
     exclude_nan_target
     exclude_inf_target
+    stochastic_gradient
   =
 
   if max_depth < 1 then (
@@ -264,6 +265,7 @@ let learn
       feature_monotonicity;
       exclude_nan_target;
       exclude_inf_target;
+      stochastic_gradient;
     }
   in
 
@@ -484,6 +486,13 @@ let commands =
       let doc = "Exclude row where the target is a floating point infinity" in
       Arg.(value & opt bool false & info ["exclude-inf-target"] ~docv:"BOOL" ~doc)
     in
+    let stochastic_gradient =
+      let doc = "With stochastic gradient enabled, the gradient of the loss \
+                 function is computed over a random subsampling of the training \
+                 set. Disabling the stochastic gradient feature allows all the \
+                 training set to be used at each iteration." in
+      Arg.(value & opt bool true & info ["stochastic-gradient"] ~docv:"BOOL" ~doc)
+    in
 
     Term.(pure learn $
             input_file_path $
@@ -514,7 +523,8 @@ let commands =
             feature_id_positive $
             feature_id_negative $
             exclude_nan_target $
-            exclude_inf_target
+            exclude_inf_target $
+            stochastic_gradient
          ),
     Term.info "learn" ~doc
   in

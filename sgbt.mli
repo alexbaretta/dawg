@@ -22,6 +22,7 @@ type conf = {
   feature_monotonicity : feature_monotonicity;
   exclude_nan_target : bool;
   exclude_inf_target : bool;
+  stochastic_gradient: bool;
 }
 
 val learn : conf -> unit
