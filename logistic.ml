@@ -486,15 +486,11 @@ class splitter
       let agg = Aggregate.create cardinality in
       Rlevec.iter v (
         fun ~index ~length ~value ->
-          let index_length = index + length in
-
-          let z_diff = cum_z.(index_length) -. cum_z.(index) in
-          let w_diff = cum_w.(index_length) -. cum_w.(index) in
-          let l_diff = cum_l.(index_length) -. cum_l.(index) in
-          let n_diff = cum_n.(index_length) -. cum_n.(index) in
-
-          Aggregate.update agg ~value ~n:n_diff ~l:l_diff
-            ~z:z_diff ~w:w_diff
+          for i = index to index + length - 1 do
+            if !in_subset.(i) then
+              Aggregate.update agg ~value ~n:weights.(i) ~l:l.(index)
+                ~z:z.(i) ~w:w.(i)
+          done
       );
       agg
 

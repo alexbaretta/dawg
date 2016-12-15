@@ -81,7 +81,7 @@ type learning_iteration = {
   learning_rate : float;
   first_loss : float;
   prev_loss : float;
-  trees : Model_t.l_tree list;
+  rev_trees : Model_t.l_tree list;
   convergence_rate_smoother : Rls1.t;
   random_state : Random.State.t;
 
@@ -121,13 +121,13 @@ let rec learn_with_fold_rate conf t iteration =
           in_set.(index) && value mod 2 = 0
       ) t.sampler
     else
-      Sampler.array (fun ~index ~value -> true) t.sampler
+      in_set
   in
   let converge iteration =
     let fold = {
       Model_t.fold_id = iteration.fold_id;
       mean = iteration.mean_model;
-      trees = iteration.trees;
+      trees = List.rev iteration.rev_trees;
     }
     in
     `Converged (iteration.learning_rate, fold)
@@ -168,14 +168,14 @@ let rec learn_with_fold_rate conf t iteration =
             convergence_rate_hat;
 
           let next_iteration () =
-            let stats = Model_utils.tree_extract_stats [] fake_stats tree in
+            (* let stats = Model_utils.tree_extract_stats [] fake_stats tree in *)
             (* Utils.epr "[DEBUG] i=%d %s\n%!" *)
             (*   iteration.i *)
             (*   (String.concat " " (List.rev_map string_of_stats stats)); *)
             { iteration with
               prev_loss = val_loss;
               i = iteration.i + 1;
-              trees = shrunken_tree :: iteration.trees;
+              rev_trees = shrunken_tree :: iteration.rev_trees;
               convergence_rate_smoother;
             }
           in
@@ -188,7 +188,7 @@ let rec learn_with_fold_rate conf t iteration =
             let fold = {
               Model_t.fold_id = iteration.fold_id;
               mean = iteration.mean_model;
-              trees = shrunken_tree :: iteration.trees;
+              trees = shrunken_tree :: iteration.rev_trees;
             }
             in
             `Timeout fold
@@ -235,7 +235,7 @@ and cut_learning_rate conf t iteration =
       random_state = Random.State.make new_random_seed;
       prev_loss = iteration.first_loss;
       i = 1;
-      trees = []
+      rev_trees = []
   } in
   learn_with_fold_rate conf t iteration
 
@@ -277,7 +277,7 @@ let learn_with_fold conf t fold_id initial_learning_rate deadline =
     first_loss = first_val_loss;
     prev_loss = first_val_loss;
     mean_model;
-    trees = [];
+    rev_trees = [];
     learning_rate = initial_learning_rate;
     convergence_rate_smoother;
     random_state = Random.State.make new_random_seed;

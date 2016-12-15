@@ -1,5 +1,8 @@
 open Proto_t
 
+let pr = Utils.pr
+let epr = Utils.epr
+
 type metrics = {
   n : float;
   loss : float;
@@ -121,6 +124,7 @@ class splitter max_gamma_opt weights y_feature n_rows num_observations =
   let in_subset = ref [| |] in
 
   let update_cum () =
+    (* Utils.epr "[DEBUG] update_cum\n%!"; *)
     cum_z.(0) <- 0.0;
     cum_l.(0) <- 0.0;
     cum_n.(0) <- 0.0;
@@ -142,20 +146,20 @@ class splitter max_gamma_opt weights y_feature n_rows num_observations =
 
   let agg_of_vector cardinality = function
     | `RLE v ->
+      (* Utils.epr "[DEBUG] agg_of_vector (RLE)\n%!"; *)
       let agg = Aggregate.create cardinality in
       Rlevec.iter v (
         fun ~index ~length ~value ->
-          let index_length = index + length in
-
-          let z_diff = cum_z.(index_length) -. cum_z.(index) in
-          let l_diff = cum_l.(index_length) -. cum_l.(index) in
-          let n_diff = cum_n.(index_length) -. cum_n.(index) in
-
-          Aggregate.update agg ~value ~n:n_diff ~l:l_diff ~z:z_diff
+          for i = index to index + length - 1 do
+            if !in_subset.(i) then
+              Aggregate.update agg ~value ~n:weights.(i) ~l:l.(i)
+                ~z:z.(i)
+          done
       );
       agg
 
     | `Dense v ->
+      (* Utils.epr "[DEBUG] agg_of_vector (Dns)\n%!"; *)
       let agg = Aggregate.create cardinality in
       let width_num_bytes = Utils.num_bytes cardinality in
       Dense.iter ~width:width_num_bytes v (
@@ -243,6 +247,7 @@ class splitter max_gamma_opt weights y_feature n_rows num_observations =
               c_cardinality, `Cat, agg
       in
 
+      let last = cardinality - 1 in
       let left = Aggregate.create cardinality in
       let right = Aggregate.create cardinality in
 
@@ -271,7 +276,7 @@ class splitter max_gamma_opt weights y_feature n_rows num_observations =
           (* phew:  now [pseudo_respone_sorted] is really sorted *)
 
           (* [s] is index into the array of
-             [pseudo_resopnse_sorted] *)
+             [pseudo_response_sorted] *)
           let s_to_k = Array.init cardinality (
               fun s ->
                 let k, _ = pseudo_response_sorted.(s) in
@@ -393,8 +398,6 @@ class splitter max_gamma_opt weights y_feature n_rows num_observations =
 
         | `Ord ->
 
-          let last = cardinality - 1 in
-
           (* initialize the cumulative sums in each direction *)
           left.sum_n.(0) <- agg.sum_n.(0);
           left.sum_z.(0) <- agg.sum_z.(0);
@@ -415,6 +418,19 @@ class splitter max_gamma_opt weights y_feature n_rows num_observations =
             right.sum_z.(rk) <- right.sum_z.(rk+1) +. agg.sum_z.(rk);
             right.sum_l.(rk) <- right.sum_l.(rk+1) +. agg.sum_l.(rk);
           done;
+
+          (* epr "[DEBUG] feature_id=%d cardinality=%d kind=%s\n" *)
+          (*   feature_id cardinality *)
+          (*   (match kind with `Ord -> "Ord" | `Cat -> "Cat"); *)
+          (* epr "[DEBUG] a.sum_n.(0)=%f a.sum_n.(1)=%f a.sum_n.(last-1)=%f a.sum_n.(last)=%f\n" *)
+          (*   agg.sum_n.(0) agg.sum_n.(1) *)
+          (*   agg.sum_n.(last-1) agg.sum_n.(last); *)
+          (* epr "[DEBUG] l.sum_n.(0)=%f l.sum_n.(1)=%f l.sum_n.(last-1)=%f l.sum_n.(last)=%f\n" *)
+          (*   left.sum_n.(0) left.sum_n.(1) *)
+          (*   left.sum_n.(last-1) left.sum_n.(last); *)
+          (* epr "[DEBUG] r.sum_n.(0)=%f r.sum_n.(1)=%f r.sum_n.(last-1)=%f r.sum_n.(last)=%f\n%!" *)
+          (*   right.sum_n.(0) right.sum_n.(1) *)
+          (*   right.sum_n.(last-1) right.sum_n.(last); *)
 
           let best_split = ref None in
 
