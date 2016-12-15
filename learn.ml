@@ -23,7 +23,7 @@ let seconds_of_string = function
 let deadline_of_string str =
   match seconds_of_string str with
     | None ->
-      epr "[ERROR] %S is not a valid time-delta sepcifier" str;
+      epr "[ERROR] %S is not a valid time-delta sepcifier\n%!" str;
       exit 1
 
     | Some delta_seconds ->
@@ -34,7 +34,7 @@ let feature_descr_of_args name_opt id_opt =
   match name_opt, id_opt with
     | None, None -> None
     | Some _, Some _ ->
-      epr "[ERROR] can only specify the a feature by its name or its id, not both";
+      epr "[ERROR] can only specify the a feature by its name or its id, not both\n%!";
       exit 1
 
     | Some name, None -> Some (`Name name)
@@ -48,6 +48,7 @@ let learn
     initial_learning_rate
     min_convergence_rate
     num_folds
+    only_fold_id
     fold_feature_name_opt
     fold_feature_id_opt
     weight_feature_name_opt
@@ -74,28 +75,35 @@ let learn
   =
 
   if max_depth < 1 then (
-    epr "[ERROR] max-depth must be greater than 0";
+    epr "[ERROR] max-depth must be greater than 0\n%!";
     exit 1
   );
 
   if 0.0 >= initial_learning_rate || initial_learning_rate > 1.0 then (
-    epr "[ERROR] initial-learning-rate must be in (0,1]";
+    epr "[ERROR] initial-learning-rate must be in (0,1]\n%!";
     exit 1
   );
 
   if min_convergence_rate < 0.0 then (
-    epr "[ERROR] min-convergence-rate must be non-negative";
+    epr "[ERROR] min-convergence-rate must be non-negative\n%!";
     exit 1
   );
 
   if num_folds < 2 then (
-    epr "[ERROR] num-folds must be greater than one";
+    epr "[ERROR] num-folds must be greater than one\n%!";
     exit 1
+  );
+
+  (match only_fold_id with
+    | Some i when i < 0 || i >= num_folds ->
+      epr "[ERROR] invalid argument for option --only-fold: %d\n%!" i;
+      exit 1
+    | _ -> ()
   );
 
   if convergence_rate_smoother_forgetful_factor <= 0.0 ||     (* forget everything *)
      convergence_rate_smoother_forgetful_factor >= 1.0 then ( (* forget nothing *)
-    epr "[ERROR] forgetful-factor must be between 0 and 1, exclusive";
+    epr "[ERROR] forgetful-factor must be between 0 and 1, exclusive\n%!";
     exit 1
   );
 
@@ -103,7 +111,7 @@ let learn
     | None -> ()
     | Some max_trees ->
       if max_trees < 1 then (
-        epr "[ERROR] the maximum number of trees must be positive";
+        epr "[ERROR] the maximum number of trees must be positive\n%!";
         exit 1
       )
   );
@@ -112,7 +120,7 @@ let learn
     | None -> ()
     | Some max_gamma ->
       if max_gamma <= 0.0 then (
-        epr "[ERROR] the maximum leaf gamma must be positive";
+        epr "[ERROR] the maximum leaf gamma must be positive\n%!";
         exit 1
       ) else (
         epr "[INFO] max-leaf-gamma = %f" max_gamma
@@ -126,13 +134,13 @@ let learn
   in
 
   if not (Sys.file_exists dog_file_path) then (
-    epr "[ERROR] file %S does not exist!" dog_file_path;
+    epr "[ERROR] file %S does not exist!\n%!" dog_file_path;
     exit 1
   );
 
   let output_dir_name = Filename.dirname output_file_path in
   if not (Sys.file_exists output_dir_name) then (
-    epr "[ERROR] output directory %S does not exist!" output_dir_name;
+    epr "[ERROR] output directory %S does not exist!\n%!" output_dir_name;
     exit 1
   );
 
@@ -143,7 +151,7 @@ let learn
             epr "[INFO] Select feature regexp: %S\n%!" re;
             Some (Pcre.regexp re)
           with Pcre.Error _ ->
-            epr "[ERROR] bad regulalar expression %S" re;
+            epr "[ERROR] bad regulalar expression %S\n%!" re;
             exit 1
         )
       | None -> None
@@ -155,7 +163,7 @@ let learn
             epr "[INFO] Exclude feature regexp: %S\n%!" re;
             Some (Pcre.regexp re)
           with Pcre.Error _ ->
-            epr "[ERROR] bad regulalar expression %S" re;
+            epr "[ERROR] bad regulalar expression %S\n%!" re;
             exit 1
         )
       | None -> None
@@ -166,14 +174,14 @@ let learn
       | "logistic"-> `Logistic
       | "square" -> `Square
       | _ ->
-        epr "[ERROR] bad loss type %S" loss_type_s;
+        epr "[ERROR] bad loss type %S\n%!" loss_type_s;
         exit 1
   in
 
   let y =
     match feature_descr_of_args y_name_opt y_id_opt with
       | None ->
-        epr "[ERROR] no target feature specified";
+        epr "[ERROR] no target feature specified\n%!";
         exit 1
       | Some y -> y
   in
@@ -194,7 +202,7 @@ let learn
       | None, None, None, Some gt -> Some (`GT gt)
       | None, None, None, None -> None
       | _ ->
-        epr "[ERROR] cannot specify multiple options among -gte, -lte, -gt, -lt";
+        epr "[ERROR] cannot specify multiple options among -gte, -lte, -gt, -lt\n%!";
         exit 1
   in
 
@@ -249,6 +257,7 @@ let learn
       dog_file_path;
       y;
       num_folds;
+      only_fold_id;
       min_convergence_rate;
       convergence_rate_smoother_forgetful_factor;
       initial_learning_rate;
@@ -327,6 +336,13 @@ let commands =
     let num_folds =
       let doc = "the number of folds, k." in
       Arg.(value & opt int 2 & info ["k";"num-folds"] ~docv:"INT" ~doc)
+    in
+
+    let only_fold_id =
+      let doc = "Train only on one fold. This option takes an \
+                 integer from 0 to k-1 as an argument \
+                 representing a fold id. " in
+      Arg.(value & opt (some int) None & info ["only-fold"] ~docv:"INT" ~doc)
     in
 
     let fold_feature_name =
@@ -502,6 +518,7 @@ let commands =
             learning_rate $
             min_convergence_rate $
             num_folds $
+            only_fold_id $
             fold_feature_name $
             fold_feature_id $
             weight_feature_name $

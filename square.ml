@@ -521,7 +521,7 @@ class splitter max_gamma_opt weights y_feature n_rows num_observations =
       else
         raise EmptyFold
 
-    method first_tree set : Model_t.l_tree =
+    method mean_model set : float =
       let sum_y = ref 0.0 in
       let nn = ref 0.0 in
       for i = 0 to n_rows - 1 do
@@ -532,11 +532,12 @@ class splitter max_gamma_opt weights y_feature n_rows num_observations =
       done;
       assert (!nn > 0.0); (* TODO *)
       let gamma0 = !sum_y /. !nn in
-      `Leaf gamma0
+      gamma0
 
-    method write_model re_trees re_features out_buf =
+    method write_model re_folds re_features out_buf =
       let open Model_t in
-      let model = `Square { re_trees; re_features } in
+      let re_num_folds = List.length re_folds in
+      let model = `Square { re_num_folds; re_folds; re_features } in
       Model_j.write_c_model out_buf model
 
   end

@@ -4,13 +4,15 @@ open Gen_code
 open Model_t
 open Trie
 
+let (~%) f y x = f x y
+
 let feature_name cf_feature_id cf_feature_name_opt =
   match cf_feature_name_opt with
   | Some feature_name -> feature_name
   | None -> "_" ^ (string_of_int cf_feature_id)
 
 (* translate a single tree into a code block *)
-let rec c_code_of_tree = function
+let rec c_code_of_tree scale_factor = function
   | `OrdinalNode {
       on_feature_id;
       on_split;
@@ -18,9 +20,9 @@ let rec c_code_of_tree = function
       on_right_tree } ->
     `Inline [
       `Line (sp "if (ord_%d <= %.17g) {" on_feature_id on_split);
-      `Block [c_code_of_tree on_left_tree];
+      `Block [c_code_of_tree scale_factor on_left_tree];
       `Line "} else {";
-      `Block [c_code_of_tree on_right_tree];
+      `Block [c_code_of_tree scale_factor on_right_tree];
       `Line "}"
     ]
 
@@ -32,14 +34,14 @@ let rec c_code_of_tree = function
     `Inline [
       `Line (sp "if (go_left_%d[ cat_id_%d ]) {"
                cn_category_directions cn_feature_id);
-      `Block [c_code_of_tree cn_left_tree];
+      `Block [c_code_of_tree scale_factor cn_left_tree];
       `Line "} else {";
-      `Block [c_code_of_tree cn_right_tree];
+      `Block [c_code_of_tree scale_factor cn_right_tree];
       `Line "}"
     ]
 
   | `Leaf leaf ->
-    `Line (sp "r += %.17g;" leaf)
+    `Line (sp "r += %.17g;" (leaf /. scale_factor))
 
 let string_of_direction = function
   | `Left  -> "1"
@@ -194,12 +196,8 @@ let now_datetime_string () =
 
 (* generate the if/then statements making up the core of the decsion
    tree ensemble implementaiton *)
-let c_code_of_trees trees =
-  let code = List.rev_map c_code_of_tree trees in
-  `Block [
-    `Line "double r = 0.0;";
-    `Inline code;
-  ]
+let c_code_of_trees scale_factor trees =
+  List.rev_map (c_code_of_tree scale_factor) trees
 
 let regularize_char = function
   | '.' | ' ' | ':' | '-' -> '_'
@@ -207,7 +205,7 @@ let regularize_char = function
 
 let regularize_function_name s = String.map regularize_char s
 
-let c_eval_function features trees model kind
+let c_eval_function features trees scale_factor mean_model model kind
     ~input_file_path ~model_md5 ~function_name ~modifiers
     ~output_logodds ~define
     :
@@ -303,7 +301,8 @@ let c_eval_function features trees model kind
     `Line (Printf.sprintf "%sdouble %s( ARGS ) {" modifiers_string function_name);
     `Block (c_extract_feature_values features);
     `Block category_directions_lists;
-    c_code_of_trees trees;
+    `Block [`Line (Printf.sprintf "double r = %.17g;" mean_model)];
+    `Block(c_code_of_trees scale_factor trees);
     `Block [transform];
     `Line "}";
   ]
@@ -317,13 +316,21 @@ let gen input_file_path output_file_path_opt function_name
     Model_j.c_model_of_string model_s, model_md5
   in
 
-  let trees, features =
+  let folds, features =
     match model with
-      | `Logistic { bi_trees; bi_features } ->
-        bi_trees, bi_features
-      | `Square { re_trees; re_features } ->
-        re_trees, re_features
+      | `Logistic { bi_folds; bi_features } ->
+        bi_folds, bi_features
+      | `Square { re_folds; re_features } ->
+        re_folds, re_features
   in
+  let scale_factor = float (List.length folds) in
+  let mean_model =
+    let sum = List.fold_left (fun accu fold -> accu +. fold.mean) 0.0 folds in
+    sum /. scale_factor
+  in
+  let rev_trees = List.(fold_left ~%rev_append []
+                          (map (fun fold -> fold.trees) folds)) in
+  let trees = List.rev rev_trees in
 
   let kind =
     match model with
@@ -358,7 +365,7 @@ let gen input_file_path output_file_path_opt function_name
             `Square
           | None -> `Square
   in
-  let code = c_eval_function features trees model kind
+  let code = c_eval_function features trees scale_factor mean_model model kind
     ~input_file_path ~model_md5 ~function_name ~modifiers
     ~output_logodds ~define in
 

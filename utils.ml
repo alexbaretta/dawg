@@ -1,6 +1,15 @@
 let pr = Printf.printf
 let epr = Printf.eprintf
 
+let sort_and_dedup l =
+  let l = List.sort Pervasives.compare l in
+  List.fold_left (fun accu x ->
+    match accu with
+      | [] -> [x]
+      | hd :: tl when x = hd -> accu
+      | _ -> x :: accu
+  ) [] l
+
 let add_to r x = r := !r +. x
 
 let divide_up n d =

@@ -16,6 +16,24 @@ module RLEMap = Utils.XMap(
     end
   )
 
+let logistic_mean_value bi_model =
+  let open Model_t in
+  let total =
+    List.fold_left (fun accu fold -> accu +. fold.mean) 0.0 bi_model.bi_folds
+  in
+  total /. (float (List.length bi_model.bi_folds))
+
+let square_mean_value re_model =
+  let open Model_t in
+  let total =
+    List.fold_left (fun accu fold -> accu +. fold.mean) 0.0 re_model.re_folds
+  in
+  total /. (float (List.length re_model.re_folds))
+
+let mean_value = function
+  | `Logistic bi_model -> logistic_mean_value bi_model
+  | `Square re_model -> square_mean_value re_model
+
 (* assign to each category_directions node a variable id, which will
    be bound to an boolean list *)
 let rec category_direction_ids_of_tree next_id category_directions_to_id =
@@ -24,7 +42,10 @@ let rec category_direction_ids_of_tree next_id category_directions_to_id =
         on_feature_id;
         on_split;
         on_left_tree;
-        on_right_tree } ->
+        on_right_tree;
+        on_left_stats;
+        on_right_stats;
+    } ->
       let on_left_tree, next_id, category_directions_to_id =
         category_direction_ids_of_tree next_id category_directions_to_id
           on_left_tree in
@@ -35,13 +56,19 @@ let rec category_direction_ids_of_tree next_id category_directions_to_id =
         on_feature_id;
         on_split;
         on_left_tree;
-        on_right_tree }, next_id, category_directions_to_id
+        on_right_tree;
+        on_left_stats;
+        on_right_stats;
+      }, next_id, category_directions_to_id
 
     | `CategoricalNode {
         cn_feature_id;
         cn_category_directions;
         cn_left_tree;
-        cn_right_tree } ->
+        cn_right_tree;
+        cn_left_stats;
+        cn_right_stats;
+    } ->
 
       let category_directions_to_id, cn_category_directions, next_id =
         try
@@ -63,7 +90,10 @@ let rec category_direction_ids_of_tree next_id category_directions_to_id =
         cn_feature_id;
         cn_category_directions;
         cn_left_tree;
-        cn_right_tree }, next_id, category_directions_to_id
+        cn_right_tree;
+        cn_left_stats;
+        cn_right_stats;
+      }, next_id, category_directions_to_id
 
     | `Leaf leaf -> `Leaf leaf, next_id, category_directions_to_id
 

@@ -32,7 +32,7 @@ dog_t.mli dog_b.mli dog_j.mli dog_t.ml dog_b.ml dog_j.ml: dog.atd
         atdgen -b $<
         atdgen -j -j-std $<
 
-model_t.mli model_b.mli model_j.mli model_t.ml model_b.ml model_j.ml: model.atd
+model_t.mli model_b.mli model_j.mli model_t.ml model_b.ml model_j.ml: model.atd proto_t.mli
         atdgen -t $<
         atdgen -b $<
         atdgen -j -j-std $<
@@ -105,7 +105,7 @@ section
   utils.cmo utils.cmi utils.cmx utils.o : utils.ml utils.mli
 
 TARGETS = \
-   $(OCamlProgram dawg , $(FILES) ) \
+   $(OCamlProgram dawg, $(FILES) ) \
    $(OCamlProgram t_rlevec , test_rlevec $(FILES) ) \
    $(OCamlProgram t_sm , test_stream_merge stream_merge heap ) \
    $(OCamlProgram t_rle, test_rle rle utils ) \

@@ -109,7 +109,11 @@ let rec fold_tree f branch branch_size x = function
 let fold_tree f x0 tree =
   fold_tree f [] 0 x0 tree
 
-let importance_of_features trees =
+let trees_of_folds folds =
+  List.(fold_left (fun accu fold -> rev_append fold.trees accu) [] folds)
+
+let importance_of_features folds =
+  let trees = trees_of_folds folds in
   let feature_id_to_importance = List.fold_left (
       fun feature_id_to_importance tree ->
         fold_tree update_importance feature_id_to_importance tree
@@ -172,7 +176,7 @@ let importance_of_features trees =
 let main model_file_path =
   let model_s = Mikmatch.Text.file_contents model_file_path in
   let model = Model_j.c_model_of_string model_s in
-  let trees, features =
+  let folds, features =
     match model with
       | `Logistic logistic ->
         printf "kind: logistic positive=%s negative=%s\n%!"
@@ -181,14 +185,16 @@ let main model_file_path =
             | None -> "<none>"
             | Some nc -> nc
           );
-        logistic.bi_trees, logistic.bi_features
+        logistic.bi_folds, logistic.bi_features
 
       | `Square square ->
         printf "kind: square\n%!";
-        square.re_trees, square.re_features
+        square.re_folds, square.re_features
   in
-  printf "num trees: %d\nnum features: %d\n%!"
-    (List.length trees) (List.length features);
+  List.(printf "num trees: %d\nnum trees: %d\nnum features: %d\n%!"
+          (length folds)
+          (fold_left (fun accu fold -> accu + length fold.trees) 0 folds)
+          (length features));
 
   (* create mapping between feature id to feature name (optional) and
      feature kind *)
@@ -214,7 +220,7 @@ let main model_file_path =
           | None -> mx
     ) feature_id_to_name_opt 0 in
 
-  let feature_id_to_importance = importance_of_features trees in
+  let feature_id_to_importance = importance_of_features folds in
 
   List.iter (
     fun (feature_id, { unsigned; positive; negative }) ->

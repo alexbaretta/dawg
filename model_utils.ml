@@ -75,18 +75,34 @@ let category_array_of_rle { dr_first_direction; dr_run_lengths } =
   Array.of_list directions
 
 let rec tree_l_to_c id_to_breakpoints = function
-  | `OrdinalNode { on_feature_id; on_split; on_left_tree; on_right_tree } ->
+  | `OrdinalNode {
+    on_feature_id;
+    on_split;
+    on_left_tree;
+    on_right_tree;
+    on_left_stats;
+    on_right_stats;
+  } ->
     let breakpoints = Utils.IntMap.find on_feature_id id_to_breakpoints in
     let on_split = breakpoints.( on_split ) in
     let on_left_tree = tree_l_to_c id_to_breakpoints on_left_tree in
     let on_right_tree = tree_l_to_c id_to_breakpoints on_right_tree in
-    `OrdinalNode { on_feature_id; on_split; on_left_tree; on_right_tree }
+    `OrdinalNode {
+      on_feature_id;
+      on_split;
+      on_left_tree;
+      on_right_tree;
+      on_left_stats;
+      on_right_stats;
+    }
 
   | `CategoricalNode {
       cn_feature_id;
       cn_category_directions;
       cn_left_tree;
-      cn_right_tree
+      cn_right_tree;
+      cn_left_stats;
+      cn_right_stats;
     } ->
     let cn_left_tree = tree_l_to_c id_to_breakpoints cn_left_tree in
     let cn_right_tree = tree_l_to_c id_to_breakpoints cn_right_tree in
@@ -95,40 +111,42 @@ let rec tree_l_to_c id_to_breakpoints = function
       cn_feature_id;
       cn_category_directions;
       cn_left_tree;
-      cn_right_tree
+      cn_right_tree;
+      cn_left_stats;
+      cn_right_stats;
     }
 
   | (`Leaf _) as leaf -> leaf
 
 
-let rec add_features_of_tree feature_set map = function
+let rec add_features_of_tree feat_map map = function
   | `CategoricalNode { cn_feature_id; cn_left_tree; cn_right_tree } ->
-    let feature = Feat_map.i_find_by_id feature_set cn_feature_id in
+    let feature = Feat_map.i_find_by_id feat_map cn_feature_id in
     let map = Utils.IntMap.add cn_feature_id feature map in
-    let map = add_features_of_tree feature_set map cn_left_tree in
-    let map = add_features_of_tree feature_set map cn_right_tree in
+    let map = add_features_of_tree feat_map map cn_left_tree in
+    let map = add_features_of_tree feat_map map cn_right_tree in
     map
 
   | `OrdinalNode { on_feature_id; on_left_tree; on_right_tree } ->
-    let feature = Feat_map.i_find_by_id feature_set on_feature_id in
+    let feature = Feat_map.i_find_by_id feat_map on_feature_id in
     let map = Utils.IntMap.add on_feature_id feature map in
-    let map = add_features_of_tree feature_set map on_left_tree in
-    let map = add_features_of_tree feature_set map on_right_tree in
+    let map = add_features_of_tree feat_map map on_left_tree in
+    let map = add_features_of_tree feat_map map on_right_tree in
     map
 
   | `Leaf _ -> map
 
 (* as a performance optimization, create a map containing only the
    features referenced by the trees; this is presumeably a (much)
-   smaller map that the (misnamed) [feature_set]. *)
-let id_to_feature feature_set trees =
+   smaller map that the [feat_map]. *)
+let id_to_feature feat_map trees =
   List.fold_left (
     fun map tree ->
-      add_features_of_tree feature_set map tree
+      add_features_of_tree feat_map map tree
   ) Utils.IntMap.empty trees
 
-let l_to_c feature_set trees =
-  let id_to_feature = id_to_feature feature_set trees in
+let trees_l_to_c feat_map trees =
+  let id_to_feature = id_to_feature feat_map trees in
   let features = Utils.IntMap.fold (
       fun feature_id feature features ->
         (feature_d_to_m feature) :: features
@@ -138,6 +156,18 @@ let l_to_c feature_set trees =
   let trees = List.map (tree_l_to_c id_to_breakpoints) trees in
   trees, features
 
+let fold_l_to_c feat_map fold =
+  let trees, features = trees_l_to_c feat_map fold.trees in
+  { fold with trees }, features
+
+let folds_l_to_c feat_map folds =
+  List.fold_left (fun (accu_folds, accu_features) fold ->
+    let fold, features = fold_l_to_c feat_map fold in
+    let accu_folds = fold :: accu_folds in
+    let accu_features = List.rev_append features accu_features in
+    (accu_folds, accu_features)
+  ) ([], []) folds
+
 let rec tree_rle_to_array = function
   | (`Leaf _) as leaf -> leaf
 
@@ -146,6 +176,8 @@ let rec tree_rle_to_array = function
       cn_category_directions;
       cn_left_tree;
       cn_right_tree;
+      cn_left_stats;
+      cn_right_stats;
     } ->
     let cn_category_directions = category_array_of_rle cn_category_directions in
     let cn_left_tree = tree_rle_to_array cn_left_tree in
@@ -154,13 +186,60 @@ let rec tree_rle_to_array = function
       cn_feature_id;
       cn_category_directions;
       cn_left_tree;
-      cn_right_tree
+      cn_right_tree;
+      cn_left_stats;
+      cn_right_stats;
     }
 
-  | `OrdinalNode { on_feature_id; on_split; on_left_tree; on_right_tree } ->
+  | `OrdinalNode {
+    on_feature_id;
+    on_split;
+    on_left_tree;
+    on_right_tree;
+    on_left_stats;
+    on_right_stats;
+  } ->
     let on_left_tree = tree_rle_to_array on_left_tree in
     let on_right_tree = tree_rle_to_array on_right_tree in
-    `OrdinalNode { on_feature_id; on_split; on_left_tree; on_right_tree }
+    `OrdinalNode {
+      on_feature_id;
+      on_split;
+      on_left_tree;
+      on_right_tree;
+      on_left_stats;
+      on_right_stats;
+    }
 
-let rle_to_array trees =
+let trees_rle_to_array trees =
   List.rev_map tree_rle_to_array trees
+
+let fold_rle_to_array fold =
+  let open Model_t in
+  { fold with trees = trees_rle_to_array fold.trees }
+
+let folds_rle_to_array folds =
+  List.rev_map fold_rle_to_array folds
+
+let logistic_rle_to_array bi_model =
+  let open Model_t in
+  { bi_model with bi_folds = folds_rle_to_array bi_model.bi_folds }
+
+let square_rle_to_array re_model =
+  let open Model_t in
+  { re_model with re_folds = folds_rle_to_array re_model.re_folds }
+
+let rle_to_array = function
+  | `Logistic bi_model -> `Logistic (logistic_rle_to_array bi_model)
+  | `Square re_model -> `Square (square_rle_to_array re_model)
+
+let rec tree_extract_stats accu stats (tree : ('a, 'b) Model_t.tree) =
+  match tree with
+    | `Leaf _ -> stats :: accu
+    | `OrdinalNode on ->
+      tree_extract_stats
+        (tree_extract_stats accu on.on_left_stats on.on_left_tree)
+        on.on_right_stats on.on_right_tree
+    | `CategoricalNode cn ->
+      tree_extract_stats
+        (tree_extract_stats accu cn.cn_left_stats cn.cn_left_tree)
+        cn.cn_right_stats cn.cn_right_tree

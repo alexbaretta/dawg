@@ -919,7 +919,7 @@ class splitter
       else
         raise EmptyFold
 
-    method first_tree set : Model_t.l_tree =
+    method mean_model set : float =
       assert (Array.length set = n_rows);
       let n_true = ref 0.0 in
       let n_false = ref 0.0 in
@@ -936,14 +936,15 @@ class splitter
         raise Loss.BadTargetDistribution
       else
         let gamma0 = 0.5 *. (log (n_true /. n_false)) in
-        `Leaf gamma0
+        gamma0
 
-    method write_model trees features out_buf =
+    method write_model folds features out_buf =
       let open Model_t in
       let model = `Logistic {
         bi_positive_category = positive_category;
         bi_negative_category_opt = negative_category_opt;
-        bi_trees = trees;
+        bi_num_folds = List.length folds;
+        bi_folds = folds;
         bi_features = features;
       } in
       Model_j.write_c_model out_buf model

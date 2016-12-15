@@ -3,8 +3,10 @@
 open Gen_code
 open Model_t
 
+let (~%) f y x = f x y
+
 (* translate a single tree into a code block *)
-let rec py_code_of_tree = function
+let rec py_code_of_tree scale_factor = function
   | `OrdinalNode {
       on_feature_id;
       on_split;
@@ -12,9 +14,9 @@ let rec py_code_of_tree = function
       on_right_tree } ->
     `Inline [
       `Line (sp "if ord_%d <= %.17g:" on_feature_id on_split);
-      `Block [py_code_of_tree on_left_tree];
+      `Block [py_code_of_tree scale_factor on_left_tree];
       `Line "else:";
-      `Block [py_code_of_tree on_right_tree];
+      `Block [py_code_of_tree scale_factor on_right_tree];
     ]
 
   | `CategoricalNode {
@@ -25,13 +27,13 @@ let rec py_code_of_tree = function
     `Inline [
       `Line (sp "if go_left_%d[ cat_id_%d ]:"
                cn_category_directions cn_feature_id);
-      `Block [py_code_of_tree cn_left_tree];
+      `Block [py_code_of_tree scale_factor cn_left_tree];
       `Line "else:";
-      `Block [py_code_of_tree cn_right_tree];
+      `Block [py_code_of_tree scale_factor cn_right_tree];
     ]
 
   | `Leaf leaf ->
-    `Line (sp "r += %.17g" leaf)
+    `Line (sp "r += %.17g" (leaf /. scale_factor))
 
 let string_of_direction = function
   | `Left  -> "T"
@@ -233,14 +235,10 @@ let now_datetime_string () =
 
 (* generate the if/then statements making up the core of the decsion
    tree ensemble implementaiton *)
-let py_code_of_trees trees =
-  let code = List.rev_map py_code_of_tree trees in
-  `Block [
-    `Line "r = 0.";
-    `Inline code;
-  ]
+let py_code_of_trees scale_factor trees =
+  List.rev_map (py_code_of_tree scale_factor) trees
 
-let py_eval_function features trees model kind
+let py_eval_function features trees scale_factor mean_model model kind
     ~input_file_path ~model_md5 ~function_name ~output_logodds
     :
     Atd_indent.t list
@@ -325,7 +323,8 @@ let py_eval_function features trees model kind
     empty_line;
     `Line (Printf.sprintf "def %s( fv ):" function_name);
     `Block (py_extract_feature_values features);
-    py_code_of_trees trees;
+    `Block [`Line (Printf.sprintf "r = %.17g;" mean_model)];
+    `Block (py_code_of_trees scale_factor trees);
     `Block [transform];
   ]
 
@@ -337,13 +336,21 @@ let gen input_file_path output_file_path_opt function_name
     Model_j.c_model_of_string model_s, model_md5
   in
 
-  let trees, features =
+  let folds, features =
     match model with
-      | `Logistic { bi_trees; bi_features } ->
-        bi_trees, bi_features
-      | `Square { re_trees; re_features } ->
-        re_trees, re_features
+      | `Logistic { bi_folds; bi_features } ->
+        bi_folds, bi_features
+      | `Square { re_folds; re_features } ->
+        re_folds, re_features
   in
+  let scale_factor = float (List.length folds) in
+  let mean_model =
+    let sum = List.fold_left (fun accu fold -> accu +. fold.mean) 0.0 folds in
+    sum /. scale_factor
+  in
+  let rev_trees = List.(fold_left ~%rev_append []
+                          (map (fun fold -> fold.trees) folds)) in
+  let trees = List.rev rev_trees in
 
   let kind =
     match model with
@@ -378,7 +385,7 @@ let gen input_file_path output_file_path_opt function_name
             `Square
           | None -> `Square
   in
-  let code = py_eval_function features trees model kind
+  let code = py_eval_function features trees scale_factor mean_model model kind
       ~input_file_path ~model_md5 ~function_name  ~output_logodds in
 
   let ouch =

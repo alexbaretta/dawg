@@ -147,13 +147,17 @@ let rec terminate (best_split : Proto_t.split) =
             cn_category_directions = directions;
             cn_left_tree = `Leaf os.os_left.s_gamma;
             cn_right_tree = `Leaf os.os_right.s_gamma;
+            cn_left_stats = os.os_left;
+            cn_right_stats = os.os_right;
           }
 
         | `OrdinalSplit os -> `OrdinalNode {
             on_feature_id = os.os_feature_id;
             on_split = os.os_split;
             on_left_tree = `Leaf os.os_left.s_gamma;
-            on_right_tree = `Leaf os.os_right.s_gamma
+            on_right_tree = `Leaf os.os_right.s_gamma;
+            on_left_stats = os.os_left;
+            on_right_stats = os.os_right;
           }
     in
     Some node
@@ -199,7 +203,9 @@ and make m depth in_subset =
                 cn_feature_id = os.os_feature_id;
                 cn_category_directions = directions;
                 cn_left_tree = side_left;
-                cn_right_tree = side_right
+                cn_right_tree = side_right;
+                cn_left_stats = os.os_left;
+                cn_right_stats = os.os_right;
               }
 
             | `OrdinalSplit os -> `OrdinalNode {
@@ -207,6 +213,8 @@ and make m depth in_subset =
                 on_split = os.os_split;
                 on_left_tree = side_left;
                 on_right_tree = side_right;
+                on_left_stats = os.os_left;
+                on_right_stats = os.os_right;
               }
         in
         Some node
@@ -219,7 +227,9 @@ let rec eval_partially_1 feature_id value = function
       on_split;
       on_left_tree;
       on_right_tree;
-      on_feature_id
+      on_feature_id;
+      on_left_stats;
+      on_right_stats;
     } ->
     if on_feature_id = feature_id then
       let sub_tree =
@@ -233,14 +243,23 @@ let rec eval_partially_1 feature_id value = function
       (* create a new tree, the result of simplifying each subtree *)
       let on_left_tree  = eval_partially_1 feature_id value on_left_tree in
       let on_right_tree = eval_partially_1 feature_id value on_right_tree in
-      `OrdinalNode { on_split; on_left_tree; on_right_tree; on_feature_id }
+      `OrdinalNode {
+        on_split;
+        on_left_tree;
+        on_right_tree;
+        on_feature_id;
+        on_left_stats;
+        on_right_stats;
+      }
 
   | `CategoricalNode {
       cn_category_directions;
       cn_left_tree;
       cn_right_tree;
-      cn_feature_id
-    } ->
+      cn_feature_id;
+      cn_left_stats;
+      cn_right_stats;
+  } ->
     if cn_feature_id = feature_id then
       let sub_tree =
         match cn_category_directions.(value) with
@@ -255,7 +274,9 @@ let rec eval_partially_1 feature_id value = function
         cn_category_directions;
         cn_left_tree;
         cn_right_tree;
-        cn_feature_id
+        cn_feature_id;
+        cn_left_stats;
+        cn_right_stats;
       }
 
   | (`Leaf _) as leaf -> leaf

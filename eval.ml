@@ -73,6 +73,13 @@ let eval_trees get trees =
       sum +. f
   ) 0.0 trees
 
+let eval_folds get num_folds folds =
+  let total = List.fold_left (
+    fun sum fold ->
+      fold.mean +. eval_trees get fold.trees
+  ) 0.0 folds
+  in
+  total /. (float num_folds)
 
 type categorical_entry = {
   category_to_index : (string, int) Hashtbl.t;
@@ -297,7 +304,7 @@ let model_eval
   let model_s = Mikmatch.Text.file_contents model_file_path in
   let model = Model_j.c_model_of_string model_s in
 
-  let transform, trees, features =
+  let transform, folds, features =
     match positive_category_opt, model with
       | Some positive_category, `Logistic logistic -> (
 
@@ -321,26 +328,27 @@ let model_eval
                   (* negative category is anonymous; so any string will do *)
                   invert ~output_logodds
           in
-          transform, logistic.bi_trees, logistic.bi_features
+          transform, logistic.bi_folds, logistic.bi_features
         )
 
       | None, `Logistic logistic ->
         epr "[WARNING] file %S contains a logistic model, but no positive category was \
             provided\n%!" model_file_path;
-        normal ~output_logodds, logistic.bi_trees, logistic.bi_features
+        normal ~output_logodds, logistic.bi_folds, logistic.bi_features
 
 
       | None, `Square square ->
-        noop, square.re_trees, square.re_features
+        noop, square.re_folds, square.re_features
 
       | Some _, `Square square ->
         epr "[WARNING] file %S contains a regression model, not a logistic model as \
             implied by the positive category argument\n%!" model_file_path;
-        noop, square.re_trees, square.re_features
+        noop, square.re_folds, square.re_features
   in
+  let num_folds = List.length folds in
 
   (* decode category directions from rle to array *)
-  let trees = Model_utils.rle_to_array trees in
+  let folds = Model_utils.folds_rle_to_array folds in
 
   let csv_ch =
     match csv_file_path_opt with
@@ -379,7 +387,7 @@ let model_eval
 
         let is_ok =
           try
-            let f = eval_trees (get row) trees in
+            let f = eval_folds (get row) num_folds folds in
             fprintf pch "%f\n" (transform f);
             true
           with

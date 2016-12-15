@@ -9,6 +9,7 @@ type conf = {
   loss_type : loss_type;
   dog_file_path : string;
   num_folds : int;
+  only_fold_id : int option;
   min_convergence_rate : float;
   initial_learning_rate : float;
   y : Feat_utils.feature_descr;
@@ -52,14 +53,10 @@ type t = {
   folds : int array;
 }
 
-let exceed_max_trees num_iters max_trees_opt =
-  match max_trees_opt with
-    | None -> false
-    | Some max_trees ->
-      num_iters >= max_trees
+let exceed_max_trees num_iters max_trees = num_iters >= max_trees
 
-
-let reset t first_tree =
+let reset t mean_model =
+  let first_tree = `Leaf mean_model in
   let gamma = t.eval (Feat_map.a_find_by_id t.feature_map) first_tree in
   t.splitter#clear;
   (match t.splitter#boost gamma with
@@ -74,7 +71,7 @@ type learning_iteration = {
   (* what is the fold currently being held out for the purpose of
      identifying the optimal termination point? This fold is the
      validation fold. *)
-  fold : int;
+  fold_id : int;
 
   (* is the observation in the 'working folds' or the 'validation
      fold' ?  *)
@@ -89,12 +86,18 @@ type learning_iteration = {
   random_state : Random.State.t;
 
   (* what is the first tree? *)
-  first_tree : Model_t.l_tree;
+  mean_model : float;
 
   (* should learning stop, returning the best model produced so
      far? *)
   timeout : unit -> bool
 }
+
+let string_of_stats { Proto_t.s_gamma; s_n; s_loss } =
+  Printf.sprintf "{ s_gamma=%f; s_n=%f; s_loss=%f }"
+    s_gamma s_n s_loss
+
+let fake_stats = { Proto_t.s_gamma = nan; s_n = nan; s_loss = nan }
 
 let rec learn_with_fold_rate conf t iteration =
   let feature_monotonicity_map =
@@ -120,11 +123,20 @@ let rec learn_with_fold_rate conf t iteration =
     else
       Sampler.array (fun ~index ~value -> true) t.sampler
   in
+  let converge iteration =
+    let fold = {
+      Model_t.fold_id = iteration.fold_id;
+      mean = iteration.mean_model;
+      trees = iteration.trees;
+    }
+    in
+    `Converged (iteration.learning_rate, fold)
+  in
 
   match Tree.make m 0 in_subset with
     | None ->
       print_endline "converged: no more trees";
-      `Converged (iteration.learning_rate, iteration.trees)
+      converge iteration
 
     | Some tree ->
       let shrunken_tree = Tree.shrink iteration.learning_rate tree in
@@ -148,47 +160,66 @@ let rec learn_with_fold_rate conf t iteration =
           let convergence_rate_hat = Rls1.theta convergence_rate_smoother in
 
           Utils.pr "iter % 3d % 7d  %s %s    %+.4e %+.4e\n%!"
-            iteration.fold
+            iteration.fold_id
             iteration.i
             s_wrk
             s_val
             convergence_rate
             convergence_rate_hat;
 
-          if has_converged then (
-            Utils.pr "converged: metrics indicate continuing is pointless\n";
-            `Converged (iteration.learning_rate, iteration.trees)
-          )
-          else if val_loss >= 2.0 *. iteration.prev_loss then (
-            Utils.pr "diverged: loss rose dramatically!\n";
-            cut_learning_rate conf t iteration
-          )
-          else if iteration.timeout () then (
+          let next_iteration () =
+            let stats = Model_utils.tree_extract_stats [] fake_stats tree in
+            (* Utils.epr "[DEBUG] i=%d %s\n%!" *)
+            (*   iteration.i *)
+            (*   (String.concat " " (List.rev_map string_of_stats stats)); *)
+            { iteration with
+              prev_loss = val_loss;
+              i = iteration.i + 1;
+              trees = shrunken_tree :: iteration.trees;
+              convergence_rate_smoother;
+            }
+          in
+          let continue_learning () =
+            learn_with_fold_rate conf t (next_iteration ())
+          in
+
+          if iteration.timeout () then (
             Utils.pr "timeout!\n";
-            `Timeout iteration.trees
-          )
-          else if exceed_max_trees iteration.i conf.max_trees_opt then (
-            (* convergence, kinda *)
-            Utils.pr "tree limit constraint met\n";
-            `Converged (iteration.learning_rate, iteration.trees)
-          )
-          else if convergence_rate_hat < conf.min_convergence_rate then (
-            (* convergence! *)
-            Utils.pr "converged: rate exceeded\n";
-            `Converged (iteration.learning_rate, iteration.trees)
-          )
-          else
-            (* continue learning *)
+            let fold = {
+              Model_t.fold_id = iteration.fold_id;
+              mean = iteration.mean_model;
+              trees = shrunken_tree :: iteration.trees;
+            }
+            in
+            `Timeout fold
+          ) else
+            match conf.max_trees_opt with
+              | Some max_trees ->
+                if exceed_max_trees iteration.i max_trees then (
+                  (* convergence, kinda *)
+                  Utils.pr "tree limit constraint met\n";
+                  converge (next_iteration ())
+                )
+                else continue_learning ()
 
-            let iteration = {
-              iteration with
-                prev_loss = val_loss;
-                i = iteration.i + 1;
-                trees = shrunken_tree :: iteration.trees;
-                convergence_rate_smoother;
-            } in
-
-            learn_with_fold_rate conf t iteration
+              | None ->
+                if has_converged then (
+                  Utils.pr "converged: metrics indicate continuing is pointless\n";
+                  converge (next_iteration ())
+                )
+                else if val_loss >= 2.0 *. iteration.prev_loss then (
+                  Utils.pr "diverged: loss rose dramatically!\n";
+                  cut_learning_rate conf t iteration
+                )
+                else if convergence_rate_hat < conf.min_convergence_rate then (
+                  (* convergence! *)
+                  Utils.pr "converged: rate exceeded\n";
+                  if val_loss >= iteration.prev_loss then
+                    converge iteration
+                  else
+                    converge (next_iteration ())
+                )
+                else continue_learning ()
 
 
 and cut_learning_rate conf t iteration =
@@ -196,8 +227,7 @@ and cut_learning_rate conf t iteration =
   let learning_rate = 0.5 *. iteration.learning_rate in
   Utils.pr "reducing learning rate from %f to %f\n"
     iteration.learning_rate learning_rate;
-  let first_tree = iteration.first_tree in
-  reset t first_tree;
+  reset t iteration.mean_model;
   let new_random_seed = [| Random.int 10_000 |] in
   let iteration = {
     iteration with
@@ -205,22 +235,26 @@ and cut_learning_rate conf t iteration =
       random_state = Random.State.make new_random_seed;
       prev_loss = iteration.first_loss;
       i = 1;
-      trees = [first_tree]
+      trees = []
   } in
   learn_with_fold_rate conf t iteration
 
-let learn_with_fold conf t fold initial_learning_rate deadline =
-  let in_set = Array.init t.n_rows (fun i -> let n = t.folds.(i) in n >= 0 && n <> fold) in
-  let out_set = Array.init t.n_rows (fun i -> t.folds.(i) = fold) in
+let learn_with_fold conf t fold_id initial_learning_rate deadline =
+  let in_set =
+    Array.init t.n_rows (fun i -> let n = t.folds.(i) in n >= 0 && n <> fold_id)
+  in
+  let out_set =
+    Array.init t.n_rows (fun i -> t.folds.(i) = fold_id)
+  in
 
-  let first_tree = t.splitter#first_tree in_set in
-  reset t first_tree;
+  let mean_model = t.splitter#mean_model in_set in
+  reset t mean_model;
 
   let { Loss.s_wrk; s_val; val_loss = first_val_loss } =
     t.splitter#metrics ~in_set ~out_set
   in
 
-  Utils.pr "fold % 3d          %s %s\n%!" fold s_wrk s_val;
+  Utils.pr "fold % 3d          %s %s\n%!" fold_id s_wrk s_val;
 
   let new_random_seed = [| Random.int 10_000 |] in
 
@@ -237,13 +271,13 @@ let learn_with_fold conf t fold initial_learning_rate deadline =
 
   let iteration = {
     i = 1;
-    fold;
+    fold_id;
     in_set;
     out_set;
     first_loss = first_val_loss;
     prev_loss = first_val_loss;
-    first_tree;
-    trees = [first_tree];
+    mean_model;
+    trees = [];
     learning_rate = initial_learning_rate;
     convergence_rate_smoother;
     random_state = Random.State.make new_random_seed;
@@ -547,41 +581,41 @@ let learn conf =
     folds
   } in
 
-  let rec loop fold trees_list initial_learning_rate =
-    if fold < conf.num_folds then
-      match learn_with_fold conf t fold initial_learning_rate 0.0 with
+  let rec loop fold_id (folds : ('a, 'b) Model_t.folds) initial_learning_rate =
+    if (match conf.only_fold_id with
+      | None -> fold_id >= conf.num_folds
+      | Some i -> fold_id <> i
+    ) then
+      folds
+    else
+      match learn_with_fold conf t fold_id initial_learning_rate 0.0 with
 
-        | `Converged (effective_learning_rate, trees) ->
-          let trees_list = List.rev_append trees trees_list in
+        | `Converged (effective_learning_rate, fold) ->
+          let folds = fold :: folds in
           (* set the initial learning rate of the next fold model to the
              effective learning rate of the previous one; this means that
              the learning rate can gradually decrease from one fold to the
              next, as a learning attempt on folds fail (diverge) *)
-          loop (fold + 1) trees_list effective_learning_rate
+          loop (fold_id + 1) folds effective_learning_rate
 
-        | `Timeout trees ->
+        | `Timeout fold ->
           (* time's up!  only include [trees] if no other trees were
              previously learned. *)
-          match trees_list with
-            | [] -> trees
-            | _ -> trees_list
+          match folds with
+            | [] -> [fold]
+            | _ -> folds
 
-    else
-      trees_list
   in
 
   (* combine the model learned for each fold into a mega-model,
      where these sequence of trees are simply averaged (bagged!) *)
-  let trees = loop 0 [] conf.initial_learning_rate in
-  let trees =
-    let fold_weight = 1.0 /. (float conf.num_folds) in
-    List.rev_map (
-      fun tree ->
-        Tree.shrink fold_weight tree
-    ) trees
+  let initial_fold_id = match conf.only_fold_id with
+    | Some i -> i
+    | None -> 0
   in
+  let folds = loop initial_fold_id [] conf.initial_learning_rate in
 
-  let trees, features = Model_utils.l_to_c feature_map trees in
+  let folds, features = Model_utils.folds_l_to_c feature_map folds in
 
   (* write model file *)
   let () =
@@ -592,7 +626,7 @@ let learn conf =
     let out_buf = Bi_outbuf.create_channel_writer ouch in
 
     (* write model to buffer *)
-    splitter#write_model trees features out_buf;
+    splitter#write_model folds features out_buf;
 
     (* flush buffer *)
     Bi_outbuf.flush_channel_writer out_buf;
