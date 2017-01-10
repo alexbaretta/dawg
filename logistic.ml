@@ -391,17 +391,23 @@ let y_array_of_feature binarization_threshold_opt y_feature n =
           | None -> y_array_of_ord n ord
           | Some th -> y_array_of_binarize_ord th n ord
   in
-  assert (
-    try
-      for i = 0 to n-1 do
-        match classify_float y.(i) with
-          | FP_normal -> ()
-          | _ -> raise Sys.Break
-      done;
-      true
-    with Sys.Break ->
-      false
-  );
+  let error = ref false in
+  for i = 0 to n-1 do
+    let y_i = y.(i) in
+    match classify_float y_i with
+      | FP_nan ->
+        Utils.epr "[ERROR] target variable is nan at row %d\n%!" i;
+        error := true
+      | FP_infinite ->
+        Utils.epr "[ERROR] target variable is inf at row %d\n%!" i;
+        error := true
+      | _ ->
+        if y_i < 0.0 || y_i > 1.0 then (
+          Utils.epr "[ERROR] target variable at row %d is not a valid probability: %f\n%!" i y_i;
+          error := true
+        )
+  done;
+  if !error then exit 1;
   y, p, n_opt
 
 module Aggregate = struct
