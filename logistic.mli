@@ -8,6 +8,11 @@ type binarization_threshold = [
 
 val probability : float -> float
 class splitter :
-  float option -> binarization_threshold option
-    -> float array -> Feat.afeature -> int -> int
-    -> Loss.splitter
+  max_gamma_opt:float option ->
+    binarization_threshold_opt:binarization_threshold option ->
+    weights:float array ->
+    y_feature:Feat.afeature ->
+    n_rows:int ->
+    num_observations:int ->
+    min_observations_per_node:float ->
+      Loss.splitter

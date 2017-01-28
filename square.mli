@@ -1,1 +1,8 @@
-class splitter : float option -> float array -> Feat.afeature -> int -> int -> Loss.splitter
+class splitter :
+  max_gamma_opt:float option ->
+    weights:float array ->
+    y_feature:Feat.afeature ->
+    n_rows:int ->
+    num_observations:int ->
+    min_observations_per_node:float ->
+      Loss.splitter

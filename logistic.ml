@@ -440,12 +440,13 @@ let updated_loss ~gamma  ~sum_l ~sum_z ~sum_w =
 exception EmptyFold
 
 class splitter
-  max_gamma_opt
-  binarization_threshold_opt
-  weights
-  y_feature
-  n_rows
-  num_observations
+  ~max_gamma_opt
+  ~binarization_threshold_opt
+  ~weights
+  ~y_feature
+  ~n_rows
+  ~num_observations
+  ~min_observations_per_node
   =
   let y, positive_category, negative_category_opt =
     y_array_of_feature binarization_threshold_opt y_feature n_rows in
@@ -679,8 +680,8 @@ class splitter
             (* we can only have a split when the left and right
                approximations are based on one or more observations *)
 
-            if left_n > 0.0 &&
-               right_n > 0.0 &&
+            if left_n > min_observations_per_node &&
+               right_n > min_observations_per_node &&
                left.sum_w.(k) <> 0.0 &&
                right.sum_w.(k_1) <> 0.0
             then (

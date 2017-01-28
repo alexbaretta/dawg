@@ -53,6 +53,7 @@ let learn
     fold_feature_id_opt
     weight_feature_name_opt
     weight_feature_id_opt
+    min_observations_per_node
     convergence_rate_smoother_forgetful_factor
     deadline
     output_file_path
@@ -258,6 +259,7 @@ let learn
       y;
       num_folds;
       only_fold_id;
+      min_observations_per_node;
       min_convergence_rate;
       convergence_rate_smoother_forgetful_factor;
       initial_learning_rate;
@@ -375,6 +377,12 @@ let commands =
                  observation weights." in
       Arg.(value & opt (some int) None &
            info ["w-id";"weight-feature-id"] ~docv:"INT" ~doc )
+    in
+
+    let min_observations_per_node =
+      let doc = "Minimum total observation weight allowed in a tree node" in
+      Arg.(value & opt float 0.0 &
+           info ["W";"minimum-weight-per-node"] ~docv:"FLOAT" ~doc )
     in
 
     let feature_name_positive =
@@ -523,6 +531,7 @@ let commands =
             fold_feature_id $
             weight_feature_name $
             weight_feature_id $
+            min_observations_per_node $
             convergence_rate_smoother_forgetful_factor $
             deadline $
             output_file_path $

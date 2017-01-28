@@ -10,6 +10,7 @@ type conf = {
   dog_file_path : string;
   num_folds : int;
   only_fold_id : int option;
+  min_observations_per_node : float;
   min_convergence_rate : float;
   initial_learning_rate : float;
   y : Feat_utils.feature_descr;
@@ -563,11 +564,21 @@ let learn conf =
     match conf.loss_type with
       | `Logistic ->
         new Logistic.splitter
-          conf.max_gamma_opt conf.binarization_threshold_opt
-          weights a_y_feature n_rows num_observations
+          ~max_gamma_opt:conf.max_gamma_opt
+          ~binarization_threshold_opt:conf.binarization_threshold_opt
+          ~weights
+          ~y_feature:a_y_feature
+          ~n_rows
+          ~num_observations
+          ~min_observations_per_node:conf.min_observations_per_node
       | `Square ->
         new Square.splitter
-          conf.max_gamma_opt weights a_y_feature n_rows num_observations
+          ~max_gamma_opt:conf.max_gamma_opt
+          ~weights
+          ~y_feature:a_y_feature
+          ~n_rows
+          ~num_observations
+          ~min_observations_per_node:conf.min_observations_per_node
   in
 
   let eval = Tree.mk_eval n_rows in

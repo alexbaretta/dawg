@@ -6,6 +6,7 @@ type conf = {
   dog_file_path : string;
   num_folds : int;
   only_fold_id : int option;
+  min_observations_per_node : float;
   min_convergence_rate : float;
   initial_learning_rate : float;
   y : Feat_utils.feature_descr;

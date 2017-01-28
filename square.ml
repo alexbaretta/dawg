@@ -108,7 +108,14 @@ let updated_loss ~gamma  ~sum_l ~sum_z ~sum_n =
 
 exception EmptyFold
 
-class splitter max_gamma_opt weights y_feature n_rows num_observations =
+class splitter
+  ~max_gamma_opt
+  ~weights
+  ~y_feature
+  ~n_rows
+  ~num_observations
+  ~min_observations_per_node
+  =
   let y = get_y_as_array y_feature n_rows in
 
   let z = Array.make n_rows 0.0 in
@@ -330,7 +337,7 @@ class splitter max_gamma_opt weights y_feature n_rows num_observations =
             (* we can only have a split when the left and right
                approximations are based on one or more observations *)
 
-            if left_n > 0.0 && right_n > 0.0 then (
+            if left_n > min_observations_per_node && right_n > min_observations_per_node then (
 
               let left_gamma  = left.sum_z.(k)    /. left_n  in
               let right_gamma = right.sum_z.(k_1) /. right_n in
