@@ -475,28 +475,28 @@ let commands =
     in
 
     let binarize_lte =
-      let doc = "provide a binariziation threshold to an ordinal prediction \
+      let doc = "provide a binarization threshold to an ordinal prediction \
                  target.  The generated labels are \"LTE\" and \"GT\"" in
       Arg.( value & opt (some float) None &
             info ["L"; "lte"; "binarization-threshold-lte"] ~docv:"FLOAT" ~doc)
     in
 
     let binarize_gte =
-      let doc = "provide a binariziation threshold to an ordinal prediction \
+      let doc = "provide a binarization threshold to an ordinal prediction \
                  target.  The generated labels are \"GTE\" and \"LT\"" in
       Arg.( value & opt (some float) None &
             info ["G"; "gte"; "binarization-threshold-gte"] ~docv:"FLOAT" ~doc)
     in
 
     let binarize_lt =
-      let doc = "provide a binariziation threshold to an ordinal prediction \
+      let doc = "provide a binarization threshold to an ordinal prediction \
                  target.  The generated labels are \"LT\" and \"GTE\"" in
       Arg.( value & opt (some float) None &
             info ["lt"; "binarization-threshold-lt"] ~docv:"FLOAT" ~doc)
     in
 
     let binarize_gt =
-      let doc = "provide a binariziation threshold to an ordinal prediction \
+      let doc = "provide a binarization threshold to an ordinal prediction \
                  target.  The generated labels are \"GT\" and \"LTE\"" in
       Arg.( value & opt (some float) None &
             info ["gt"; "binarization-threshold-gt"] ~docv:"FLOAT" ~doc)
