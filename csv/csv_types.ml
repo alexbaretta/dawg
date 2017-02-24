@@ -4,6 +4,20 @@ type sparse = (int * value) list
 type row = [ `Dense of dense | `Sparse of sparse | `EOF ]
 type opt_row = value option list
 
+let int_of_value : value -> int = function
+  | `Int x -> x
+  | _ -> invalid_arg "int_of_value"
+
+let float_of_value : value -> float = function
+  | `Float x -> x
+  | `Int x -> float x
+  | _ -> invalid_arg "float_of_value"
+
+let string_of_value : value -> string = function
+  | `String x -> x
+  | `Float f -> string_of_float f
+  | `Int i -> string_of_int i
+
 let parse_opt_row_sparse opt_row =
   let rec loop i accu opt_row =
     match opt_row with

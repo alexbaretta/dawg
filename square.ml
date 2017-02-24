@@ -207,7 +207,7 @@ class splitter
             (* update [f.(i)] *)
             f.(i) <- f.(i) +. gamma_i;
 
-            let zi = y.(i) -. f.(i) in
+            let zi = y.(i) -. f.(i) in (* least-squares pseudo response *)
             let li = zi *. zi in
 
             (match classify_float zi with

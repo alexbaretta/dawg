@@ -17,27 +17,37 @@ let index =
     loop 0 Utils.IntMap.empty list
 
 (* column index * row index * value *)
-type cell = int * int * Csv_types.value
+type 'a cell = {
+  cell_column: int;
+  cell_row: int;
+  cell_value: 'a;
+}
+
+type csv_cell = Csv_types.value cell
 
 (* order by feature_id [j_*] in ascending order, then by observation
    in ascending order *)
-let compare_cells (j_1, value_1, _) (j_2, value_2, _) =
-  match Pervasives.compare j_1 j_2 with
-    | -1 -> -1
-    |  1 ->  1
-    |  0 -> Pervasives.compare value_1 value_2
-    | _ -> assert false
+let compare_cells c1 c2 =
+  match Pervasives.compare c1.cell_column c2.cell_column with
+    | 0 -> Pervasives.compare c1.cell_row c2.cell_row
+    | x -> x
 
 (* the type of a value is encoded in two bits *)
 let tag_of_cell = function
-  | _, _, `Int _    -> 0b01
-  | _, _, `Float _  -> 0b10
-  | _, _, `String _ -> 0b11
+  | { cell_value = `Int _ }    -> 0b01
+  | { cell_value = `Float _ }  -> 0b10
+  | { cell_value = `String _ } -> 0b11
+
+let map_cell f cell = {
+  cell_column = cell.cell_column;
+  cell_row = cell.cell_row;
+  cell_value = f cell.cell_value;
+}
 
 (* write the tags of (up to) four cells into the lower byte of an
    integer, with the tag of the first cell in bits 8 and 7 of that
    byte. *)
-let tag4_of_cells offset cells =
+let tag4_of_cells offset (cells : csv_cell array) =
   let b = ref 0 in
   let num_cells_1 = (Array.length cells) - 1 in
   let offset_3 = offset + 3 in
@@ -50,7 +60,7 @@ let tag4_of_cells offset cells =
   done;
   !b
 
-let write_cells_to_file work_dir file_num cells =
+let write_cells_to_file work_dir file_num (cells : csv_cell array) =
   let path = Filename.concat work_dir (string_of_int file_num) in
   let ouch = open_out path in
   let bobuf = Bi_outbuf.create_channel_writer ouch in
@@ -62,13 +72,16 @@ let write_cells_to_file work_dir file_num cells =
       Bi_outbuf.add_char bobuf (Char.chr tag4)
     );
 
-    match cells.(i) with
-      | (j, i, `Int value) ->
+    let cell = cells.(i) in
+    let j = cell.cell_column in
+    let i = cell.cell_row in
+    match cell.cell_value with
+      | `Int value ->
         TS_b.write_int_cell bobuf (j, i, value)
-      | (j, i, `Float value) ->
+      | `Float value ->
         TS_b.write_float_cell bobuf (j, i, value)
-      | (j, i, `String value) ->
-        TS_b.write_string_cell bobuf (j,  i, value)
+      | `String value ->
+        TS_b.write_string_cell bobuf (j, i, value)
   done;
   Bi_outbuf.flush_channel_writer bobuf;
   close_out ouch
@@ -95,17 +108,17 @@ let cell_stream path =
       in
       match tag with
         | 0b01 -> (* [`Int] *)
-          let j, i, value =
+          let cell_column, cell_row, value =
             TS_b.read_int_cell bibuf in
-          Some (j, i, `Int value)
+          Some {cell_column; cell_row; cell_value = `Int value }
         | 0b10 -> (* [`Float] *)
-          let j, i, value =
+          let cell_column, cell_row, value =
             TS_b.read_float_cell bibuf in
-          Some (j, i, `Float value)
+          Some { cell_column; cell_row; cell_value = `Float value }
         | 0b11 -> (* [`String] *)
-          let j, i, value =
+          let cell_column, cell_row, value =
             TS_b.read_string_cell bibuf in
-          Some (j, i, `String value)
+          Some { cell_column; cell_row; cell_value = `String value }
         | 0b00 ->
           (* the trailing, unused bits of a tag4, indicating that we
              are at the end of the input buffer *)
@@ -119,11 +132,6 @@ let cell_stream path =
   in
   Stream.from next
 
-let string_of_value = function
-  | `Float f -> string_of_float f
-  | `Int i -> string_of_int i
-  | `String s -> s
-
 type create = {
   input_path_opt : string option;
   output_path : string;
@@ -136,7 +144,11 @@ type create = {
 }
 
 
-let dummy_cell = (-1, -1, `Float nan)
+let dummy_cell = {
+  cell_row = -1;
+  cell_column = -1;
+  cell_value = `Float nan;
+}
 
 (* i := row index
    j := column index
@@ -149,7 +161,7 @@ let write_cells_to_work_dir work_dir header next_row config =
 
   let cells = Array.make config.max_cells_in_mem dummy_cell in
 
-  let append_cell ~c ~f cell =
+  let append_cell ~c ~f (cell : csv_cell) =
     if c < config.max_cells_in_mem then (
       cells.( c ) <- cell;
       c + 1, f
@@ -165,9 +177,9 @@ let write_cells_to_work_dir work_dir header next_row config =
     )
   in
 
-  let rec loop ~i ~f ~c prev_dense_row_length_opt =
+  let rec loop ~cell_row ~f ~c prev_dense_row_length_opt =
     if c mod 1000 = 0 then
-      Printf.printf "files=%d rows=%d\n%!" f i;
+      Printf.printf "files=%d rows=%d\n%!" f cell_row;
 
     match next_row () with
       | `Ok `EOF ->
@@ -178,17 +190,18 @@ let write_cells_to_work_dir work_dir header next_row config =
           Array.blit cells 0 trailing_cells 0 c;
           Array.sort compare_cells trailing_cells;
           write_cells_to_file work_dir f trailing_cells;
-          i, f+1
+          cell_row, f+1
         )
         else
-          i, f
+          cell_row, f
 
       | `Ok (`Dense dense) ->
         let dense_row_length, c, f = List.fold_left (
-            fun (j, c, f) value ->
+            fun (cell_column, c, f) cell_value ->
               let c, f =
-                append_cell ~c ~f (j, i, value) in
-              j + 1, c, f
+                let cell = { cell_column; cell_row; cell_value } in
+                append_cell ~c ~f cell in
+              cell_column + 1, c, f
           ) (0, c, f) dense in
 
         (* check that all dense rows have the same length *)
@@ -201,19 +214,20 @@ let write_cells_to_work_dir work_dir header next_row config =
                 Printf.printf "dense row %d has length %d, which is \
                                different than length %d of previous \
                                dense rows.\n%!"
-                  (i+1) dense_row_length prev_dense_row_length;
+                  (cell_row+1) dense_row_length prev_dense_row_length;
                 exit 1
               );
               Some dense_row_length
         in
-        loop ~i:(i+1) ~f ~c dense_row_length_opt
+        loop ~cell_row:(cell_row + 1) ~f ~c dense_row_length_opt
 
       | `Ok (`Sparse sparse) ->
         let c, f = List.fold_left (
-            fun (c, f) (j, value) ->
-              append_cell ~c ~f (j, i, value)
+            fun (c, f) (cell_column, cell_value) ->
+              let cell = { cell_column; cell_row; cell_value } in
+              append_cell ~c ~f cell
           ) (c, f) sparse in
-        loop ~i:(i+1) ~f ~c prev_dense_row_length_opt
+        loop ~cell_row:(cell_row+1) ~f ~c prev_dense_row_length_opt
 
       | `SyntaxError err ->
         print_endline (Csv_io.string_of_error_location err);
@@ -230,7 +244,7 @@ let write_cells_to_work_dir work_dir header next_row config =
 
   in
   Printf.printf "num features: %d\n%!" num_features;
-  loop ~i:0 ~f:0 ~c:0 None
+  loop ~cell_row:0 ~f:0 ~c:0 None
 
 let csv_to_cells work_dir config =
   let { input_path_opt; no_header } = config in
@@ -255,7 +269,7 @@ let csv_to_cells work_dir config =
 
 module CellMerge = Stream_merge.Make(
     struct
-      type t = cell
+      type t = csv_cell
       let leq h1 h2 =
         compare_cells h1 h2 < 1
     end
@@ -481,18 +495,6 @@ let downsample_hist =
     bins
 
 
-(* cast int's to float's; strings are errors *)
-let float_of_value = function
-  | `Int v -> float v
-  | `Float v -> v
-  | `String _ -> assert false
-
-(* strings and floats are errors *)
-let int_of_value = function
-  | `Int v -> v
-  | `Float _
-  | `String _ -> assert false
-
 let float_zero = `Float 0.0
 let int_zero   = `Int   0
 
@@ -537,17 +539,17 @@ let ordinal_feature
 
 let float_or_int_feature
     ~j
-    kc
+    kind_count
     hist
     ~n
     i_values
     feature_id_to_name
     ~max_width =
 
-  let n_anonymous = n - kc.n_int - kc.n_float in
+  let n_anonymous = n - kind_count.n_int - kind_count.n_float in
   assert (n_anonymous >= 0);
 
-  if kc.n_float > 0 then (
+  if kind_count.n_float > 0 then (
     (* this is a float feature *)
 
     (* augment the histogram with zero's, assuming this is the anonymous
@@ -566,8 +568,9 @@ let float_or_int_feature
        ()
     );
 
-    let hist_list, num_distinct_values = unbox_listify_distinct_value_to_count
-        float_of_value hist in
+    let hist_list, num_distinct_values =
+      unbox_listify_distinct_value_to_count Csv_types.float_of_value hist
+    in
 
     (* if num_distinct_values = 1 then *)
     (*   `Uniform *)
@@ -582,7 +585,7 @@ let float_or_int_feature
           let hist = sort_fst_descending hist_list in
           downsample_hist hist num_bins
       in
-      ordinal_feature float_zero float_of_value
+      ordinal_feature float_zero Csv_types.float_of_value
         (fun b -> `Float b) ~j i_values breakpoints ~n feature_id_to_name
 
   )
@@ -597,7 +600,7 @@ let float_or_int_feature
       incr hist ~by:n_anonymous int_zero;
 
     let hist_list, num_distinct_values = unbox_listify_distinct_value_to_count
-        int_of_value hist in
+        Csv_types.int_of_value hist in
 
     (* if num_distinct_values = 1 then *)
     (*   `Uniform *)
@@ -608,7 +611,7 @@ let float_or_int_feature
         let breakpoints = List.rev_map fst (sort_fst_descending hist_list) in
 
         (* low cardinality int's are kept as ints *)
-        ordinal_feature int_zero int_of_value
+        ordinal_feature int_zero Csv_types.int_of_value
           (fun b -> `Int b) ~j i_values breakpoints ~n feature_id_to_name
 
       else
@@ -619,7 +622,7 @@ let float_or_int_feature
         let hist = sort_fst_ascending hist_list in
         let hist = List.rev_map (fun (iv, c) -> float_of_int iv, c) hist in
         let breakpoints = downsample_hist hist num_bins in
-        ordinal_feature float_zero float_of_value
+        ordinal_feature float_zero Csv_types.float_of_value
           (fun b -> `Float b) ~j i_values breakpoints ~n feature_id_to_name
   )
 
@@ -659,18 +662,18 @@ let mixed_type_feature_exn mt_feature_id mt_feature_name i_values =
 
 let write_feature j i_values n dog feature_id_to_name config =
   let hist = Hashtbl.create (n / 100) in
-  let kc = List.fold_left (
-      fun kc (i, value) ->
+  let kind_count = List.fold_left (
+      fun kind_count (i, value) ->
         incr hist value;
         match value with
-          | `Float _  -> { kc with n_float  = kc.n_float  + 1 }
-          | `Int _    -> { kc with n_int    = kc.n_int    + 1 }
-          | `String _ -> { kc with n_string = kc.n_string + 1 }
+          | `Float _  -> { kind_count with n_float  = kind_count.n_float  + 1 }
+          | `Int _    -> { kind_count with n_int    = kind_count.n_int    + 1 }
+          | `String _ -> { kind_count with n_string = kind_count.n_string + 1 }
 
     ) {n_float=0; n_int=0; n_string=0} i_values in
-  if kc.n_string > 0 then
-    if kc.n_float = 0 && kc.n_int = 0 then
-      let cf = categorical_feature j kc hist n i_values
+  if kind_count.n_string > 0 then
+    if kind_count.n_float = 0 && kind_count.n_int = 0 then
+      let cf = categorical_feature j kind_count hist n i_values
           feature_id_to_name config in
       match cf with
         | `Uniform ->
@@ -683,10 +686,12 @@ let write_feature j i_values n dog feature_id_to_name config =
       let feature_name = feature_id_to_name j in
       mixed_type_feature_exn j feature_name i_values
 
-  else if kc.n_float > 0 || kc.n_int > 0 then
+  else if kind_count.n_float > 0 || kind_count.n_int > 0 then
 
-    let float_or_int_feat = float_or_int_feature ~j kc hist ~n i_values
-        feature_id_to_name ~max_width:config.max_width in
+    let float_or_int_feat =
+      float_or_int_feature ~j kind_count hist ~n i_values
+        feature_id_to_name ~max_width:config.max_width
+    in
     match float_or_int_feat with
       | `Uniform ->
         Printf.printf "%d: numeric uniform\n%!" j
@@ -712,16 +717,16 @@ let write_feature j i_values n dog feature_id_to_name config =
 
 let pr_hist j i_values =
   let hist = Hashtbl.create 10_000 in (* TODO *)
-  let kc = List.fold_left (
-    fun kc (i, value) ->
+  let kind_count = List.fold_left (
+    fun kind_count (i, value) ->
       incr hist value;
       match value with
-        | `Float _ -> { kc with n_float = kc.n_float + 1 }
-        | `Int _ -> { kc with n_int = kc.n_int + 1 }
-        | `String _ -> { kc with n_string = kc.n_string + 1 }
+        | `Float _ -> { kind_count with n_float = kind_count.n_float + 1 }
+        | `Int _ -> { kind_count with n_int = kind_count.n_int + 1 }
+        | `String _ -> { kind_count with n_string = kind_count.n_string + 1 }
 
   ) {n_float=0; n_int=0; n_string=0} i_values in
-  printf "%d: f=%d i=%d s=%d\n" j kc.n_float kc.n_int kc.n_string
+  printf "%d: f=%d i=%d s=%d\n" j kind_count.n_float kind_count.n_int kind_count.n_string
 
 let read_cells_write_features work_dir ~num_cell_files ~num_rows header config =
   let feature_id_to_name =
@@ -730,20 +735,20 @@ let read_cells_write_features work_dir ~num_cell_files ~num_rows header config =
       Utils.IntMap.find_opt feature_id idx
   in
 
-  let rec loop prev_j i_values dog =
+  let rec loop prev_column row_values dog =
     parser
-  | [< '(j, i, value); tail >] ->
-    if j = prev_j then (
-      let i_values = (i, value) :: i_values in
-      loop j i_values dog tail
+  | [< '{cell_column; cell_row; cell_value}; tail >] ->
+    if cell_column = prev_column then (
+      let row_values = (cell_row, cell_value) :: row_values in
+      loop cell_column row_values dog tail
     )
     else (
-      write_feature prev_j i_values num_rows dog feature_id_to_name config;
-      loop j [i, value] dog tail
+      write_feature prev_column row_values num_rows dog feature_id_to_name config;
+      loop cell_column [(cell_row, cell_value)] dog tail
     )
 
   | [< >] ->
-    write_feature prev_j i_values num_rows dog feature_id_to_name
+    write_feature prev_column row_values num_rows dog feature_id_to_name
       config;
     Dog_io.WO.close_writer dog
   in
@@ -758,9 +763,9 @@ let read_cells_write_features work_dir ~num_cell_files ~num_rows header config =
         (cell_stream cell_path) :: accu
     ) ~start:0 ~finix:num_cell_files [] in
   let merged_stream = CellMerge.create cell_streams in
-  let j, i, value = Stream.next merged_stream in
-  let i_values = [i, value] in
-  loop j i_values dog merged_stream;
+  let {cell_column; cell_row; cell_value} = Stream.next merged_stream in
+  let row_values = [cell_row, cell_value] in
+  loop cell_column row_values dog merged_stream;
 
   (* remove all the cell files *)
   Utils.iter_range (
@@ -781,7 +786,7 @@ let create_work_dir () =
 let pr = Printf.printf
 let sp = Printf.sprintf
 
-let create config =
+let create_dog config =
   let work_dir = create_work_dir () in
   let header, num_rows, num_cell_files = csv_to_cells work_dir config in
   pr "num rows: %d, num_cell_files: %d\n%!" num_rows num_cell_files;
@@ -856,7 +861,7 @@ module Defaults = struct
   let allow_variable_length_dense_rows = false
 end
 
-let create output_path input_path_opt max_density no_header max_cells_in_mem
+let csv_to_dog output_path input_path_opt max_density no_header max_cells_in_mem
     max_width =
   if max_density > 1.0 || max_density < 0.0 then (
     printf "max-density must be between 0 and 1 (inclusive)";
@@ -884,7 +889,7 @@ let create output_path input_path_opt max_density no_header max_cells_in_mem
     allow_variable_length_dense_rows =
       Defaults.allow_variable_length_dense_rows;
   } in
-  let exit_status = create config in
+  let exit_status = create_dog config in
 
   (* hmm unnecessary verbage to make compiler happy *)
   let () = exit exit_status in
@@ -940,7 +945,7 @@ let commands =
     in
 
     Term.(
-      pure create $
+      pure csv_to_dog $
         output_path $
         input_path $
         max_density $
