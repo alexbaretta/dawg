@@ -545,7 +545,8 @@ let float_or_int_feature
     let bins = Huf_hist.Float.huf hist_array max_width in
     let bounds = Huf_hist.Float.bounds bins in
     let repr_elements = Huf_hist.repr_elements bins in
-    let breakpoints = { bounds; repr_elements } in
+    let freq = Huf_hist.freq bins in
+    let breakpoints = { bounds; repr_elements; freq } in
     ordinal_feature float_zero Csv_types.float_of_value
       (fun b -> `Float b) ~j i_values breakpoints ~n feature_id_to_name
 
@@ -570,7 +571,8 @@ let float_or_int_feature
       let bins = Huf_hist.Int.huf hist_array max_width in
       let bounds = Huf_hist.Int.bounds bins in
       let repr_elements = Huf_hist.repr_elements bins in
-      let breakpoints = { bounds; repr_elements } in
+      let freq = Huf_hist.freq bins in
+      let breakpoints = { bounds; repr_elements; freq } in
 
       ordinal_feature int_zero Csv_types.int_of_value
         (fun b -> `Int b) ~j i_values breakpoints ~n feature_id_to_name
@@ -582,7 +584,8 @@ let float_or_int_feature
       let bins = Huf_hist.Float.huf hist_array max_width in
       let bounds = Huf_hist.Float.bounds bins in
       let repr_elements = Huf_hist.repr_elements bins in
-      let breakpoints = { bounds; repr_elements } in
+      let freq = Huf_hist.freq bins in
+      let breakpoints = { bounds; repr_elements; freq } in
       ordinal_feature float_zero Csv_types.float_of_value
         (fun b -> `Float b) ~j i_values breakpoints ~n feature_id_to_name
   )

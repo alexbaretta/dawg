@@ -19,3 +19,4 @@ module Int : HUF with type t = int
 module Float : HUF with type t = float
 
 val repr_elements : 'a bin array -> 'a array
+val freq : 'a bin array -> int array

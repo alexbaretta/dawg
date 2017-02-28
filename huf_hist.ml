@@ -128,6 +128,7 @@ module Make(Arith:ARITHMETIC) : HUF with type t = Arith.t = struct
 end
 
 let repr_elements bins = Array.map (fun bin -> bin.repr) bins
+let freq bins = Array.map (fun bin -> bin.count) bins
 
 module IntArith = struct
   type t = int
