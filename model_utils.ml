@@ -29,12 +29,8 @@ let feature_d_to_m = function
    also convert to arrays, so we can easily get the breakpoint value
    corresponding to a split (index). *)
 let float_array_of_breakpoints = function
-  | `Int int_list ->
-    let float_list = List.rev_map float_of_int (List.rev int_list) in
-    Array.of_list float_list
-
-  | `Float float_list ->
-    Array.of_list float_list
+  | `Int breakpoints -> Array.map float breakpoints.bounds
+  | `Float breakpoints -> breakpoints.bounds
 
 (* create a map from the feature id of ordinal features to their
    breakpoints *)

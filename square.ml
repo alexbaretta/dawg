@@ -17,7 +17,7 @@ type model = Model_t.l_regression_model
 let string_of_metrics { n; loss } =
   Printf.sprintf "% 6.2f %.4e" n loss
 
-let get_y_as_array y_feature n =
+let y_repr_array y_feature n =
   let y = Array.make n nan in
   let open Dog_t in
   (match y_feature with
@@ -29,20 +29,20 @@ let get_y_as_array y_feature n =
           | `RLE rle -> (
               match o_breakpoints with
                 | `Float breakpoints ->
-                  let breakpoints = Array.of_list breakpoints in
+                  let repr_elements = breakpoints.repr_elements in
                   Rlevec.iter rle (
                     fun ~index ~length ~value ->
                       for i = index to index + length - 1 do
-                        y.(i) <- breakpoints.( value )
+                        y.(i) <- repr_elements.(value)
                       done
                   )
 
                 | `Int breakpoints ->
-                  let breakpoints = Array.of_list breakpoints in
+                  let repr_elements = breakpoints.repr_elements in
                   Rlevec.iter rle (
                     fun ~index ~length ~value ->
                       for i = index to index + length - 1 do
-                        y.(i) <- float breakpoints.( value )
+                        y.(i) <- float repr_elements.(value)
                       done
                   )
             )
@@ -51,17 +51,17 @@ let get_y_as_array y_feature n =
               let width = Utils.num_bytes o_cardinality in
               match o_breakpoints with
                 | `Float breakpoints ->
-                  let breakpoints = Array.of_list breakpoints in
+                  let repr_elements = breakpoints.repr_elements in
                  Dense.iter ~width vec (
                     fun ~index ~value ->
-                      y.( index ) <- breakpoints.( value )
+                      y.( index ) <- repr_elements.(value)
                   )
 
                 | `Int breakpoints ->
-                  let breakpoints = Array.of_list breakpoints in
+                  let repr_elements = breakpoints.repr_elements in
                   Dense.iter ~width vec (
                     fun ~index ~value ->
-                      y.( index ) <- float breakpoints.( value )
+                      y.( index ) <- float repr_elements.(value)
                   )
             )
       )
@@ -116,7 +116,7 @@ class splitter
   ~num_observations
   ~min_observations_per_node
   =
-  let y = get_y_as_array y_feature n_rows in
+  let y = y_repr_array y_feature n_rows in
 
   let z = Array.make n_rows 0.0 in
   let l = Array.make n_rows 0.0 in

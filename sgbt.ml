@@ -418,7 +418,7 @@ let folds_and_weights conf sampler feature_map n a_y_feature =
           weights
   in
 
-  let y_array = Feat_utils.array_of_afeature a_y_feature in
+  let y_array = Feat_utils.repr_of_afeature a_y_feature in
 
   let () =
     if conf.exclude_inf_target || conf.exclude_nan_target then (

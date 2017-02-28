@@ -15,7 +15,7 @@ let apply_max_gamma_opt ~max_gamma_opt left right =
     | Some max_gamma ->
       apply_max_gamma ~max_gamma left, apply_max_gamma ~max_gamma right
 
-let array_of_afeature = function
+let repr_of_afeature = function
   | `Cat cat -> (
       let categories = Array.of_list cat.c_categories in
       let num_categories = Array.length categories in
@@ -88,11 +88,10 @@ let array_of_afeature = function
             match o_breakpoints with
               | `Float breakpoints ->
                 let result = Array.make rle.Vec.length (-1, 0.0) in
-                let breakpoints = Array.of_list breakpoints in
-
+                let repr_elements = breakpoints.repr_elements in
                 Rlevec.iter rle (
                   fun ~index ~length ~value ->
-                    let res = value, breakpoints.( value ) in
+                    let res = value, repr_elements.(value) in
                     for i = index to index + length - 1 do
                       result.(i) <- res
                     done
@@ -101,11 +100,11 @@ let array_of_afeature = function
 
               | `Int breakpoints ->
                 let result = Array.make rle.Vec.length (-1, 0) in
-                let breakpoints = Array.of_list breakpoints in
+                let repr_elements = breakpoints.repr_elements in
 
                 Rlevec.iter rle (
                   fun ~index ~length ~value ->
-                    let res = value, breakpoints.( value ) in
+                    let res = value, repr_elements.(value) in
                     for i = index to index + length - 1 do
                       result.(i) <- res
                     done
@@ -116,26 +115,24 @@ let array_of_afeature = function
             let width = Utils.num_bytes o_cardinality in
             match o_breakpoints with
               | `Float breakpoints ->
-
                 let result = Array.make vec.Vec.length (-1, 0.0) in
-                let breakpoints = Array.of_list breakpoints in
-                assert (o_cardinality = Array.length breakpoints);
+                let repr_elements = breakpoints.repr_elements in
+                assert (o_cardinality = Array.length repr_elements);
 
                 Dense.iter ~width vec (
                   fun ~index ~value ->
-                    result.( index ) <- value, breakpoints.( value )
+                    result.(index) <- value, repr_elements.(value)
                 );
                 `Float result
 
               | `Int breakpoints ->
-
                 let result = Array.make vec.Vec.length (-1, 0) in
-                let breakpoints = Array.of_list breakpoints in
-                assert (o_cardinality = Array.length breakpoints);
+                let repr_elements = breakpoints.repr_elements in
+                assert (o_cardinality = Array.length repr_elements);
 
                 Dense.iter ~width vec (
                   fun ~index ~value ->
-                    result.( index ) <- value, breakpoints.( value )
+                    result.(index) <- value, repr_elements.(value)
                 );
                 `Int result
           )
@@ -217,7 +214,7 @@ let weights_of_afeature = function
     epr "[ERROR] nameless feature id %d is categorical but a float feature is needed" feature_id;
     exit 1
   | afeature ->
-    match array_of_afeature afeature with
+    match repr_of_afeature afeature with
       | `String _ -> assert false
       | `StringAnon _ -> assert false
       | `Int id_weight_array ->

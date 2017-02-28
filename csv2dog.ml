@@ -458,13 +458,6 @@ module DEBUG = struct
     rand_hist max_total_count max_value_incr max_count [] 0 min_value
 end
 
-let sort_fst_ascending list =
-  List.sort (fun (v1,_) (v2,_) -> Pervasives.compare v1 v2) list
-
-let sort_fst_descending list =
-  List.sort (fun (v1,_) (v2,_) -> Pervasives.compare v2 v1) list
-
-
 let incr hist ?(by=1) k =
   let count =
     try
@@ -474,38 +467,11 @@ let incr hist ?(by=1) k =
   in
   Hashtbl.replace hist k (count + by)
 
-
-let downsample_hist =
-  let open Huf_hist in
-  let rec loop accu num_bins = function
-    | [] -> assert false
-
-    | [{ left; right }, bin_count] ->
-      (* last bin; its [right] is the maximum value *)
-      let accu = right :: left :: accu in
-      List.rev accu, num_bins + 1
-
-    | ({ left; right }, bin_count) :: tail ->
-      loop (left :: accu) (num_bins + 1) tail
-  in
-  fun sorted_distinct_value_count_pairs num_bins ->
-    let bins = create sorted_distinct_value_count_pairs (num_bins - 1) in
-    let bins, num_bins = loop [] 0 bins in
-    assert (num_bins > 1);
-    bins
-
-
 let float_zero = `Float 0.0
 let int_zero   = `Int   0
 
 (* unbox, and convert to list, so we can sort, and return the list and
    the total number of distinct values *)
-let unbox_listify_distinct_value_to_count of_value distinct_value_to_count_tbl =
-  Hashtbl.fold (
-    fun value count (accu, num_distinct_values) ->
-      let v = of_value value in
-      ((v, count) :: accu, num_distinct_values + 1)
-  ) distinct_value_to_count_tbl ([], 0)
 
 let ordinal_feature
     zero
@@ -517,9 +483,12 @@ let ordinal_feature
     ~n
     feature_id_to_name
     =
-  let breakpoints_a = Array.of_list breakpoints in
-  let o_cardinality = Array.length breakpoints_a in
-  let find = Binary_search.find_x breakpoints_a in
+  let bounds = breakpoints.bounds in
+  let repr_elements = breakpoints.repr_elements in
+  let o_cardinality = Array.length repr_elements in
+
+  (* Attention: We need to find the bin, not the bound. We have n bins but n-1 bounds. *)
+  let find x = Binary_search.find_r bounds x 0 (o_cardinality - 1) in
   let i_rank = List.rev_map (
       fun (i, value) ->
         let rank = find (of_value value) in
@@ -540,7 +509,7 @@ let ordinal_feature
 let float_or_int_feature
     ~j
     kind_count
-    hist
+    hist_table
     ~n
     i_values
     feature_id_to_name
@@ -556,37 +525,29 @@ let float_or_int_feature
        value *)
     if n_anonymous > 0 then
       (* we don't want any values with value=0, count=0 in [hist_list] *)
-      incr hist ~by:n_anonymous float_zero;
+      incr hist_table ~by:n_anonymous float_zero;
 
     (* if this is a float feature, merge the number of (`Int 0) and
        (`Float 0.0) *)
     (try
-       let int_zero_count = Hashtbl.find hist int_zero in
-       Hashtbl.remove hist int_zero;
-       incr hist ~by:int_zero_count float_zero
+       let int_zero_count = Hashtbl.find hist_table int_zero in
+       Hashtbl.remove hist_table int_zero;
+       incr hist_table ~by:int_zero_count float_zero
      with Not_found ->
        ()
     );
 
-    let hist_list, num_distinct_values =
-      unbox_listify_distinct_value_to_count Csv_types.float_of_value hist
-    in
+    let hist_array = Huf_hist.make_hist_array Csv_types.float_of_value nan hist_table in
 
     (* if num_distinct_values = 1 then *)
     (*   `Uniform *)
     (* else *)
-      let uncapped_width = Utils.width num_distinct_values in
-      let breakpoints =
-        if uncapped_width <= max_width then
-          List.map fst (sort_fst_ascending hist_list)
-        else
-          (* cap the width through down-sampling *)
-          let num_bins = 1 lsl max_width in
-          let hist = sort_fst_descending hist_list in
-          downsample_hist hist num_bins
-      in
-      ordinal_feature float_zero Csv_types.float_of_value
-        (fun b -> `Float b) ~j i_values breakpoints ~n feature_id_to_name
+    let bins = Huf_hist.Float.huf hist_array max_width in
+    let bounds = Huf_hist.Float.bounds bins in
+    let repr_elements = Huf_hist.repr_elements bins in
+    let breakpoints = { bounds; repr_elements } in
+    ordinal_feature float_zero Csv_types.float_of_value
+      (fun b -> `Float b) ~j i_values breakpoints ~n feature_id_to_name
 
   )
   else (
@@ -597,33 +558,33 @@ let float_or_int_feature
        value *)
     if n_anonymous > 0 then
       (* we don't want any values with value=0, count=0 in [hist_list] *)
-      incr hist ~by:n_anonymous int_zero;
+      incr hist_table ~by:n_anonymous int_zero;
 
-    let hist_list, num_distinct_values = unbox_listify_distinct_value_to_count
-        Csv_types.int_of_value hist in
+    let hist_array = Huf_hist.make_hist_array Csv_types.int_of_value 0 hist_table in
+    let cardinality = Array.length hist_array in
 
-    (* if num_distinct_values = 1 then *)
-    (*   `Uniform *)
-    (* else *)
-      let uncapped_width = Utils.width num_distinct_values in
+    let max_cardinality = 1 lsl max_width in
+    if cardinality <= max_cardinality then
+      (* low cardinality int's are kept as ints *)
+      let hist_array = Huf_hist.make_hist_array Csv_types.int_of_value 0 hist_table in
+      let bins = Huf_hist.Int.huf hist_array max_width in
+      let bounds = Huf_hist.Int.bounds bins in
+      let repr_elements = Huf_hist.repr_elements bins in
+      let breakpoints = { bounds; repr_elements } in
 
-      if uncapped_width <= max_width then
-        let breakpoints = List.rev_map fst (sort_fst_descending hist_list) in
+      ordinal_feature int_zero Csv_types.int_of_value
+        (fun b -> `Int b) ~j i_values breakpoints ~n feature_id_to_name
 
-        (* low cardinality int's are kept as ints *)
-        ordinal_feature int_zero Csv_types.int_of_value
-          (fun b -> `Int b) ~j i_values breakpoints ~n feature_id_to_name
-
-      else
-        (* high-cardinality int features are represented as float features *)
-
-        (* cap the width through down-sampling *)
-        let num_bins = 1 lsl max_width in
-        let hist = sort_fst_ascending hist_list in
-        let hist = List.rev_map (fun (iv, c) -> float_of_int iv, c) hist in
-        let breakpoints = downsample_hist hist num_bins in
-        ordinal_feature float_zero Csv_types.float_of_value
-          (fun b -> `Float b) ~j i_values breakpoints ~n feature_id_to_name
+    else
+      (* high-cardinality int features are represented as float features *)
+      (* cap the width through down-sampling *)
+      let hist_array = Huf_hist.make_hist_array Csv_types.float_of_value nan hist_table in
+      let bins = Huf_hist.Float.huf hist_array max_width in
+      let bounds = Huf_hist.Float.bounds bins in
+      let repr_elements = Huf_hist.repr_elements bins in
+      let breakpoints = { bounds; repr_elements } in
+      ordinal_feature float_zero Csv_types.float_of_value
+        (fun b -> `Float b) ~j i_values breakpoints ~n feature_id_to_name
   )
 
 

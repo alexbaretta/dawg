@@ -8,14 +8,20 @@ type monotonicity = [ Arbitrary | Negative | Positive ]
 
 (* fst is byte width *)
 type ('rle, 'dense) vector = [ RLE of 'rle | Dense of 'dense ]
-type breakpoints = [ Int of int list | Float of float list ]
+type 'a breakpoints = {
+  (* n - 1 split points to partition the real axis into n intervals *)
+  bounds : 'a list <ocaml repr="array">;
+
+  (* n representative elements for each of n intervals *)
+  repr_elements : 'a list <ocaml repr="array">;
+}
 
 type ('rle, 'dense) ord_feature = {
   o_feature_id : feature_id;
   o_feature_name_opt : feature_name option;
   (* number of distinct values, equals length of [o_breakpoints] *)
   o_cardinality : int;
-  o_breakpoints : breakpoints;
+  o_breakpoints : [ Int of int breakpoints | Float of float breakpoints ];
   o_vector : ('rle, 'dense) vector;
 }
 

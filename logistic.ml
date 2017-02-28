@@ -232,7 +232,7 @@ let y_array_of_cat n cat =
 
         | _ -> assert false
 
-let y_array_of_ord n ord =
+let y_repr_of_ord n ord =
   let open Dog_t in
   let { o_vector; o_breakpoints; o_cardinality } = ord in
   let y = Array.make n nan in
@@ -240,8 +240,8 @@ let y_array_of_ord n ord =
     match o_breakpoints with
       | `Float breakpoints -> "1.0", Some "0.0"
       | `Int breakpoints when o_cardinality = 2 -> (
-        match breakpoints with
-          | [v0; v1] ->
+        match breakpoints.repr_elements with
+          | [|v0; v1|] ->
             string_of_int v1,
             Some (string_of_int v0)
           | _ -> assert false
@@ -253,10 +253,10 @@ let y_array_of_ord n ord =
     | `RLE rle -> (
         match o_breakpoints with
           | `Float breakpoints ->
-            let breakpoints = Array.of_list breakpoints in
+            let repr_elements = breakpoints.repr_elements in
             Rlevec.iter rle (
               fun ~index ~length ~value ->
-                let mp_one = breakpoints.(value) in
+                let mp_one = repr_elements.(value) in
                 if mp_one < 0.0 || mp_one > 1.0 then (
                   Utils.epr "[ERROR] %f (row %d) is not a valid label for logistic regression\n%!"
                     mp_one index;
@@ -281,10 +281,10 @@ let y_array_of_ord n ord =
         let width = Utils.num_bytes o_cardinality in
         match o_breakpoints with
           | `Float breakpoints ->
-            let breakpoints = Array.of_list breakpoints in
+            let repr_elements = breakpoints.repr_elements in
             Dense.iter ~width vec (
               fun ~index ~value ->
-                let mp_one = breakpoints.(value) in
+                let mp_one = repr_elements.(value) in
                 if mp_one < 0.0 || mp_one > 1.0 then (
                   Utils.epr "[ERROR] %f (row %d) is not a valid label for logistic regression\n%!"
                     mp_one index;
@@ -303,37 +303,37 @@ let y_array_of_ord n ord =
   );
   y, positive_category, negative_category_opt
 
-let y_array_of_binarize_ord binarization_threshold n ord =
+let y_array_of_binarize_repr binarization_threshold n ord =
   let open Dog_t in
   let { o_vector; o_breakpoints; o_cardinality } = ord in
   let y = Array.make n nan in
   let map, positive_category, negative_category_opt =
     match o_breakpoints, binarization_threshold with
       | `Float breakpoints, `GTE th ->
-        let breakpoints = Array.of_list breakpoints in
-        (fun i -> breakpoints.(i) >= th), "GTE", Some "LT"
+        let repr_elements = breakpoints.repr_elements in
+        (fun i -> repr_elements.(i) >= th), "GTE", Some "LT"
       | `Float breakpoints, `GT th ->
-        let breakpoints = Array.of_list breakpoints in
-        (fun i -> breakpoints.(i) > th), "GT", Some "LTE"
+        let repr_elements = breakpoints.repr_elements in
+        (fun i -> repr_elements.(i) > th), "GT", Some "LTE"
       | `Float breakpoints, `LTE th ->
-        let breakpoints = Array.of_list breakpoints in
-        (fun i -> breakpoints.(i) <= th), "LTE", Some "GT"
+        let repr_elements = breakpoints.repr_elements in
+        (fun i -> repr_elements.(i) <= th), "LTE", Some "GT"
       | `Float breakpoints, `LT th ->
-        let breakpoints = Array.of_list breakpoints in
-        (fun i -> breakpoints.(i) < th), "LT", Some "GTE"
+        let repr_elements = breakpoints.repr_elements in
+        (fun i -> repr_elements.(i) < th), "LT", Some "GTE"
 
       | `Int breakpoints, `GTE th ->
-        let breakpoints = Array.of_list breakpoints in
-        (fun i -> float breakpoints.(i) >= th), "GTE", Some "LT"
+        let repr_elements = breakpoints.repr_elements in
+        (fun i -> float repr_elements.(i) >= th), "GTE", Some "LT"
       | `Int breakpoints, `GT th ->
-        let breakpoints = Array.of_list breakpoints in
-        (fun i -> float breakpoints.(i) > th), "GT", Some "LTE"
+        let repr_elements = breakpoints.repr_elements in
+        (fun i -> float repr_elements.(i) > th), "GT", Some "LTE"
       | `Int breakpoints, `LTE th ->
-        let breakpoints = Array.of_list breakpoints in
-        (fun i -> float breakpoints.(i) <= th), "LTE", Some "GT"
+        let repr_elements = breakpoints.repr_elements in
+        (fun i -> float repr_elements.(i) <= th), "LTE", Some "GT"
       | `Int breakpoints, `LT th ->
-        let breakpoints = Array.of_list breakpoints in
-        (fun i -> float breakpoints.(i) < th), "LT", Some "GTE"
+        let repr_elements = breakpoints.repr_elements in
+        (fun i -> float repr_elements.(i) < th), "LT", Some "GTE"
   in
 
   (match o_vector with
@@ -388,8 +388,8 @@ let y_array_of_feature binarization_threshold_opt y_feature n =
       | `Cat cat -> y_array_of_cat n cat
       | `Ord ord ->
         match binarization_threshold_opt with
-          | None -> y_array_of_ord n ord
-          | Some th -> y_array_of_binarize_ord th n ord
+          | None -> y_repr_of_ord n ord
+          | Some th -> y_array_of_binarize_repr th n ord
   in
   let error = ref false in
   for i = 0 to n-1 do

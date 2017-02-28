@@ -81,7 +81,7 @@ let select path feature =
       let afeature = Feat_map.i_to_a map ifeature in
 
       let n = dog.Dog_t.num_observations in
-      let array = Feat_utils.array_of_afeature afeature in
+      let array = Feat_utils.repr_of_afeature afeature in
 
       match array with
         | `Float a ->
