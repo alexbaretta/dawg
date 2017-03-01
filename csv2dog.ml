@@ -264,8 +264,18 @@ let csv_to_cells work_dir config =
       close_in ch;
       header, num_rows, num_cell_files
 
-    | _ ->
-      print_endline "syntax error"; exit 1
+    | `SyntaxError err ->
+      print_endline (Csv_io.string_of_error_location err);
+      exit 1
+
+    | `UnterminatedString line ->
+      Printf.printf "unterminated string on line %d\n%!" line;
+      exit 1
+
+    | `IntOverflow (line, offending_string) ->
+      Printf.printf "value %S on line %d cannot be represented as an integer\n%!"
+        offending_string line;
+      exit 1
 
 module CellMerge = Stream_merge.Make(
     struct
