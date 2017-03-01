@@ -76,7 +76,7 @@ let eval_trees get trees =
 let eval_folds get num_folds folds =
   let total = List.fold_left (
     fun sum fold ->
-      fold.mean +. eval_trees get fold.trees
+      sum +. fold.mean +. eval_trees get fold.trees
   ) 0.0 folds
   in
   total /. (float num_folds)
