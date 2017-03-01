@@ -115,8 +115,8 @@ let learn
   (match max_trees_opt with
     | None -> ()
     | Some max_trees ->
-      if max_trees < 1 then (
-        epr "[ERROR] the maximum number of trees must be positive\n%!";
+      if max_trees < 0 then (
+        epr "[ERROR] the maximum number of trees must be non-negative\n%!";
         exit 1
       )
   );
