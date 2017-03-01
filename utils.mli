@@ -62,3 +62,4 @@ module List : sig
 end
 
 module IntMap : XMapS with type key = int
+module IntSet : XSetS with type elt = int

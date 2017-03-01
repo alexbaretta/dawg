@@ -1,5 +1,5 @@
 module IntMap = Utils.IntMap
-module ISet = Utils.XSet(Utils.Int)
+module IntSet = Utils.IntSet
 module SSet = Utils.XSet(String)
 
 let pr = Utils.pr
@@ -212,12 +212,12 @@ let learn
   in
 
   let positive_feature_ids =
-    List.fold_left (fun accu id -> ISet.add id accu) ISet.empty feature_id_positive
+    List.fold_left (fun accu id -> IntSet.add id accu) IntSet.empty feature_id_positive
   in
   let negative_feature_ids =
-    List.fold_left (fun accu id -> ISet.add id accu) ISet.empty feature_id_negative
+    List.fold_left (fun accu id -> IntSet.add id accu) IntSet.empty feature_id_negative
   in
-  let invalid_ids = ISet.inter positive_feature_ids negative_feature_ids in
+  let invalid_ids = IntSet.inter positive_feature_ids negative_feature_ids in
   let positive_feature_names =
     List.fold_left (fun accu name -> SSet.add name accu) SSet.empty feature_name_positive
   in
@@ -227,11 +227,11 @@ let learn
   let invalid_names = SSet.inter positive_feature_names negative_feature_names in
 
   let () =
-    if not(ISet.is_empty invalid_ids) || not(SSet.is_empty invalid_names) then
+    if not(IntSet.is_empty invalid_ids) || not(SSet.is_empty invalid_names) then
       begin
         prerr_endline "[ERROR] Some are features declared to be both positive and negative:";
         prerr_endline
-          (String.concat ", " (List.map string_of_int (ISet.to_list invalid_ids)));
+          (String.concat ", " (List.map string_of_int (IntSet.to_list invalid_ids)));
         prerr_endline
           (String.concat ", " (SSet.to_list invalid_names));
       end
@@ -240,11 +240,11 @@ let learn
   let feature_monotonicity = [] in
   let feature_monotonicity =
     List.rev_append
-      (List.map (fun id -> ((`Id id), `Positive)) (ISet.to_list positive_feature_ids))
+      (List.map (fun id -> ((`Id id), `Positive)) (IntSet.to_list positive_feature_ids))
       feature_monotonicity in
   let feature_monotonicity =
     List.rev_append
-      (List.map (fun id -> ((`Id id), `Negative)) (ISet.to_list negative_feature_ids))
+      (List.map (fun id -> ((`Id id), `Negative)) (IntSet.to_list negative_feature_ids))
       feature_monotonicity in
   let feature_monotonicity =
     List.rev_append

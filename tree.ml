@@ -1,7 +1,10 @@
 open Proto_t
 open Model_t
 
-type feature_monotonicity_map = Dog_t.monotonicity Utils.IntMap.t
+module IntSet = Utils.IntSet
+module IntMap = Utils.IntMap
+
+type feature_monotonicity_map = Dog_t.monotonicity IntMap.t
 
 let partition_observations in_subset splitting_feature best_split =
   let in_subset_left  = Array.copy in_subset in
@@ -88,7 +91,7 @@ let best_split_of_features m =
     fun feature best_opt ->
       let feature_id = Feat.feature_id feature in
       let monotonicity =
-        try Utils.IntMap.find feature_id m.feature_monotonicity_map
+        try IntMap.find feature_id m.feature_monotonicity_map
         with Not_found -> `Arbitrary
       in
       let s_opt = m.splitter#best_split monotonicity feature in
@@ -314,8 +317,6 @@ let eval_partially trees cardinality feature_id = function
     );
     !num_leaves
 
-
-module IntSet = Set.Make( Utils.Int )
 
 (* accumulate all the feature_id's referenced by a tree *)
 let rec add_feature_id_to_set set = function

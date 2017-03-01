@@ -102,18 +102,19 @@ module XMap ( M : Map.OrderedType ) = struct
       assert false
 end
 
+module XSet ( M : Set.OrderedType) : XSetS with type elt = M.t = struct
+  include Set.Make(M)
+  let to_list set =
+    fold (fun elt accu -> elt :: accu) set []
+end
+
 module Int = struct
   type t = int
   let compare = Pervasives.compare
 end
 
 module IntMap = XMap(Int)
-
-module XSet ( M : Set.OrderedType) : XSetS with type elt = M.t = struct
-  include Set.Make(M)
-  let to_list set =
-    fold (fun elt accu -> elt :: accu) set []
-end
+module IntSet = XSet(Int)
 
 (* [log2 x] returns pair [y, s], where [y + 1] is the highest bit index
    whose of [x] value is 1; and [s], the sum of bits whose
