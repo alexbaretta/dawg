@@ -106,7 +106,7 @@ let updated_loss ~gamma  ~sum_l ~sum_z ~sum_n =
   sum_l +. sum_n *. gamma *. gamma -. 2.0 *. gamma *. sum_z
 
 
-exception EmptyFold
+exception EmptyFold of string
 
 class splitter
   ~max_gamma_opt
@@ -521,8 +521,9 @@ class splitter
           Utils.add_to wrk_loss (wi *. l.(i));
           (* Utils.pr "[DEBUG] in_set i=%d w=%f l=%f z=%f wrk_nn=%f wrk_loss=%f\n%!" *)
           (*   i weights.(i) l.(i) z.(i) !wrk_nn !wrk_loss *)
-        )
-        else if out_set.(i) then (
+        );
+
+        if out_set.(i) then (
           let wi = weights.(i) in
           Utils.add_to val_nn wi;
           Utils.add_to val_loss (wi *. l.(i));
@@ -542,7 +543,7 @@ class splitter
         Loss.( { s_wrk; s_val; has_converged = false; val_loss; } )
 
       else
-        raise EmptyFold
+        raise (EmptyFold (Printf.sprintf "wrk_nn=%0.2f val_nn=%0.2f" !wrk_nn !val_nn))
 
     method mean_model set : float =
       let sum_y = ref 0.0 in

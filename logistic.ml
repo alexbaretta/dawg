@@ -866,7 +866,7 @@ class splitter
       let val_nn = ref 0.0 in
 
       for i = 0 to n_rows - 1 do
-        if in_set.(i) then
+        if in_set.(i) then (
           (* working folds *)
           let cell_p, cell_n =
             if f.(i) >= 0.0 then wrk_tt, wrk_ft else wrk_tf, wrk_ff
@@ -877,7 +877,9 @@ class splitter
           Utils.add_to cell_n ((1.0 -. p) *. weight_i);
           Utils.add_to wrk_nn weight_i;
           Utils.add_to wrk_loss l.(i)
-        else if out_set.(i) then
+        );
+
+        if out_set.(i) then (
           (* validation fold *)
           let cell_p, cell_n =
             if f.(i) >= 0.0 then val_tt, val_ft else val_tf, val_ff
@@ -888,7 +890,7 @@ class splitter
           Utils.add_to cell_n ((1.0 -. p) *. weight_i);
           Utils.add_to val_nn weight_i;
           Utils.add_to val_loss l.(i)
-
+        )
       done;
 
       if !wrk_nn > 0.0 && !val_nn > 0.0 then

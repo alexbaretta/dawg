@@ -90,8 +90,12 @@ let learn
     exit 1
   );
 
-  if num_folds < 2 then (
-    epr "[ERROR] num-folds must be greater than one\n%!";
+  if num_folds < 1 then (
+    epr "[ERROR] num-folds must be positive\n%!";
+    exit 1
+  );
+  if num_folds = 1 && max_trees_opt = None then (
+    epr "[ERROR] num-folds = 1 but max number of trees not set\n%!";
     exit 1
   );
 

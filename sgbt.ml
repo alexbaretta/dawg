@@ -242,10 +242,13 @@ and cut_learning_rate conf t iteration =
 
 let learn_with_fold conf t fold_id initial_learning_rate deadline =
   let in_set =
-    Array.init t.n_rows (fun i -> let n = t.folds.(i) in n >= 0 && n <> fold_id)
+    if conf.num_folds = 1 then
+      Array.init t.n_rows (fun i -> let n = t.folds.(i) in n >= 0)
+    else
+      Array.init t.n_rows (fun i -> let n = t.folds.(i) in n >= 0 && n <> fold_id)
   in
   let out_set =
-    Array.init t.n_rows (fun i -> t.folds.(i) = fold_id)
+    Array.init t.n_rows (fun i -> let n = t.folds.(i) in n >= 0 && n = fold_id)
   in
 
   let mean_model = t.splitter#mean_model in_set in
