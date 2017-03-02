@@ -1,5 +1,7 @@
 (** Friedman's Stochastic Gradient Boosting Trees *)
 
+module IntSet = Utils.IntSet
+
 let random_seed = [| 9271 ; 12074; 3; 12921; 92; 763 |]
 
 type loss_type = [ `Logistic | `Square ]
@@ -24,6 +26,7 @@ type conf = {
   weight_feature_opt : Feat_utils.feature_descr option;
   max_trees_opt : int option;
   max_gamma_opt : float option;
+  max_features_opt : int option;
   binarization_threshold_opt : Logistic.binarization_threshold option;
   feature_monotonicity : feature_monotonicity;
   exclude_nan_target : bool;
@@ -82,7 +85,10 @@ type learning_iteration = {
   learning_rate : float;
   first_loss : float;
   prev_loss : float;
+  allowed_features : Feat_map.t option;
   rev_trees : Model_t.l_tree list;
+  selected_features : IntSet.t;
+
   convergence_rate_smoother : Rls1.t;
   random_state : Random.State.t;
 
@@ -100,13 +106,19 @@ let string_of_stats { Proto_t.s_gamma; s_n; s_loss } =
 
 let fake_stats = { Proto_t.s_gamma = nan; s_n = nan; s_loss = nan }
 
+let (~%) f y x = f x y
+
 let rec learn_with_fold_rate conf t iteration =
   let feature_monotonicity_map =
     Feat_map.assoc t.feature_map conf.feature_monotonicity
   in
+  let feature_map = match iteration.allowed_features with
+    | None -> t.feature_map
+    | Some x -> x
+  in
   let m = {
     Tree.max_depth = conf.max_depth;
-    feature_map = t.feature_map;
+    feature_map;
     feature_monotonicity_map;
     splitter = t.splitter;
   } in
@@ -168,6 +180,21 @@ let rec learn_with_fold_rate conf t iteration =
             convergence_rate
             convergence_rate_hat;
 
+          let selected_features =
+            IntSet.union iteration.selected_features (Tree.extract_features tree)
+          in
+          let allowed_features =
+            match conf.max_features_opt with
+              | None -> None
+              | Some max_features ->
+                match iteration.allowed_features with
+                  | (Some _) as x -> x
+                  | None ->
+                    if IntSet.cardinal selected_features > max_features then
+                      Some (Feat_map.restrict t.feature_map selected_features)
+                    else
+                      None
+          in
           let next_iteration () =
             (* let stats = Model_utils.tree_extract_stats [] fake_stats tree in *)
             (* Utils.epr "[DEBUG] i=%d %s\n%!" *)
@@ -178,6 +205,8 @@ let rec learn_with_fold_rate conf t iteration =
               i = iteration.i + 1;
               rev_trees = shrunken_tree :: iteration.rev_trees;
               convergence_rate_smoother;
+              selected_features;
+              allowed_features;
             }
           in
           let continue_learning () =
@@ -236,7 +265,7 @@ and cut_learning_rate conf t iteration =
       random_state = Random.State.make new_random_seed;
       prev_loss = iteration.first_loss;
       i = 1;
-      rev_trees = []
+      rev_trees = [];
   } in
   learn_with_fold_rate conf t iteration
 
@@ -282,10 +311,12 @@ let learn_with_fold conf t fold_id initial_learning_rate deadline =
     prev_loss = first_val_loss;
     mean_model;
     rev_trees = [];
+    allowed_features = None;
+    selected_features = IntSet.empty;
     learning_rate = initial_learning_rate;
     convergence_rate_smoother;
     random_state = Random.State.make new_random_seed;
-    timeout
+    timeout;
   } in
 
   learn_with_fold_rate conf t iteration

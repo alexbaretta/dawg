@@ -77,18 +77,26 @@ let f_and_not b1 b2 =
     | true , false -> true
     | false, true  -> false
 
-module type XMapS = sig
-  include Map.S
-  val find_opt : key -> 'a t -> 'a option
-  val find_assert : key -> 'a t -> 'a
-end
 module type XSetS = sig
   include Set.S
   val to_list : t -> elt list
 end
 
+module XSet ( M : Set.OrderedType) : XSetS with type elt = M.t = struct
+  include Set.Make(M)
+  let to_list set =
+    fold (fun elt accu -> elt :: accu) set []
+end
+
+module type XMapS = sig
+  include Map.S
+  val find_opt : key -> 'a t -> 'a option
+  val find_assert : key -> 'a t -> 'a
+end
+
 module XMap ( M : Map.OrderedType ) = struct
   include Map.Make( M )
+
   let find_opt k t =
     try
       Some (find k t)
@@ -102,19 +110,14 @@ module XMap ( M : Map.OrderedType ) = struct
       assert false
 end
 
-module XSet ( M : Set.OrderedType) : XSetS with type elt = M.t = struct
-  include Set.Make(M)
-  let to_list set =
-    fold (fun elt accu -> elt :: accu) set []
-end
 
 module Int = struct
   type t = int
   let compare = Pervasives.compare
 end
 
-module IntMap = XMap(Int)
 module IntSet = XSet(Int)
+module IntMap = XMap(Int)
 
 (* [log2 x] returns pair [y, s], where [y + 1] is the highest bit index
    whose of [x] value is 1; and [s], the sum of bits whose

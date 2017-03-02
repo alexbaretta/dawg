@@ -62,6 +62,7 @@ let learn
     loss_type_s
     max_trees_opt
     max_gamma_opt
+    max_features_opt
     binarize_lte
     binarize_gte
     binarize_lt
@@ -129,6 +130,17 @@ let learn
         exit 1
       ) else (
         epr "[INFO] max-leaf-gamma = %f" max_gamma
+      )
+  );
+
+  (match max_features_opt with
+    | None -> ()
+    | Some max_features ->
+      if max_features <= 0 then (
+        epr "[ERROR] the maximum number of features must be positive\n%!";
+        exit 1
+      ) else (
+        epr "[INFO] max-features = %d" max_features
       )
   );
 
@@ -276,6 +288,7 @@ let learn
       weight_feature_opt;
       max_trees_opt;
       max_gamma_opt;
+      max_features_opt;
       binarization_threshold_opt;
       feature_monotonicity;
       exclude_nan_target;
@@ -472,6 +485,12 @@ let commands =
             info ["g";"max-leaf-gamma"] ~docv:"FLOAT" ~doc)
     in
 
+    let max_features =
+      let doc = "the approximate maximum number of features in the model" in
+      Arg.( value & opt (some int) None &
+            info ["F";"max-features"] ~docv:"INT" ~doc)
+    in
+
     let max_trees =
       let doc = "the maximum number of trees per fold sub-model" in
       Arg.( value & opt (some int) None &
@@ -544,6 +563,7 @@ let commands =
             loss_type $
             max_trees $
             max_leaf_gamma $
+            max_features $
             binarize_lte $
             binarize_gte $
             binarize_lt $

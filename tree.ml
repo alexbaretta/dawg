@@ -391,3 +391,16 @@ let rec shrink alpha = function
     let on_left_tree = shrink alpha on.on_left_tree in
     let on_right_tree = shrink alpha on.on_right_tree in
     `OrdinalNode { on with on_left_tree; on_right_tree }
+
+let rec extract_features = function
+  | `Leaf gamma -> IntSet.empty
+
+  | `CategoricalNode cn ->
+    let cn_left_set = extract_features cn.cn_left_tree in
+    let cn_right_set = extract_features cn.cn_right_tree in
+    IntSet.(add cn.cn_feature_id (union cn_left_set cn_right_set))
+
+  | `OrdinalNode on ->
+    let on_left_set = extract_features on.on_left_tree in
+    let on_right_set = extract_features on.on_right_tree in
+    IntSet.(add on.on_feature_id (union on_left_set on_right_set))

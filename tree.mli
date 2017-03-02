@@ -14,5 +14,6 @@ type m = {
 
 val make : m -> int -> bool array -> Model_t.l_tree option
 val shrink : float -> Model_t.l_tree -> Model_t.l_tree
+val extract_features : Model_t.l_tree -> Utils.IntSet.t
 val mk_eval : int ->
   ( (Dog_t.feature_id -> Feat.afeature) ->  Model_t.l_tree -> float array )

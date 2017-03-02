@@ -1,6 +1,8 @@
 (* a feature map backed by the read only Dog_io.RO *)
 open Dog_t
 
+module IntSet = Utils.IntSet
+module IntMap = Utils.IntMap
 
 type t = {
   id_to_feature : Feat.ifeature Utils.IntMap.t;
@@ -55,6 +57,16 @@ let fold t f x0 =
       x := f feature !x
   );
   !x
+
+let restrict t set =
+  let id_to_feature =
+    IntSet.fold (fun id map ->
+      match IntMap.find_opt id map with
+        | None -> map
+        | Some x -> IntMap.add id x map
+    ) set IntMap.empty
+  in
+  { t with id_to_feature }
 
 let filter t f =
   let id_to_feature = Utils.IntMap.filter f t.id_to_feature in

@@ -5,6 +5,7 @@ type t
 val create : Dog_io.RO.t -> t
 
 val filter : t -> (int -> Feat.ifeature -> bool) -> t
+val restrict : t -> Utils.IntSet.t -> t
 
 val i_find_by_id : t -> int -> Feat.ifeature
 val a_find_by_id : t -> int -> Feat.afeature

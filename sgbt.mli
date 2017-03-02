@@ -20,6 +20,7 @@ type conf = {
   weight_feature_opt : Feat_utils.feature_descr option;
   max_trees_opt : int option;
   max_gamma_opt : float option;
+  max_features_opt : int option;
   binarization_threshold_opt : Logistic.binarization_threshold option;
   feature_monotonicity : feature_monotonicity;
   exclude_nan_target : bool;
