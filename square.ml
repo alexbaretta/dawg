@@ -253,6 +253,7 @@ class splitter
             else
               c_cardinality, `Cat, agg
       in
+      if cardinality - 2 < 0 then None else
 
       let last = cardinality - 1 in
       let left = Aggregate.create cardinality in
@@ -326,8 +327,8 @@ class splitter
 
           (* find and keep optimal split -- the one associated with the
              minimum loss *)
-          for s = 0 to cardinality-2 do
-
+          (* for s = 0 to cardinality-2 do *)
+          let _ = Fibsearch.minimize 0 (cardinality - 2) (fun s ->
             let k   = s_to_k.(s)   in
             let k_1 = s_to_k.(s+1) in
 
@@ -350,7 +351,7 @@ class splitter
                  | `Positive -> right_gamma > left_gamma
                  | `Negative -> right_gamma < left_gamma
                  | `Arbitrary -> true
-              then
+              then (
 
                 let loss_left = updated_loss
                   ~gamma:left_gamma
@@ -375,7 +376,7 @@ class splitter
                      total_loss < best_total_loss
                 in
 
-                if is_total_loss_smaller then
+                if is_total_loss_smaller then (
                   let left = {
                     s_n = left_n ;
                     s_gamma = left_gamma ;
@@ -399,9 +400,15 @@ class splitter
 
                   let split = `CategoricalSplit (ord_split, s_to_k) in
                   best_split := Some (total_loss, split)
-            )
-          done;
-          !best_split
+                );
+                total_loss
+              )
+                   else infinity
+              )
+            else infinity
+          )
+          (* done; *)
+          in !best_split
 
         | `Ord ->
 
@@ -442,7 +449,8 @@ class splitter
           let best_split = ref None in
 
           (* find and keep optimal split -- the one associated with the minimum loss *)
-          for k = 0 to cardinality-2 do
+          (* for k = 0 to cardinality-2 do *)
+          let _ = Fibsearch.minimize 0 (cardinality - 2) (fun k ->
             let left_n  = left.sum_n.(k)    in
             let right_n = right.sum_n.(k+1) in
 
@@ -481,7 +489,7 @@ class splitter
                     total_loss < best_total_loss
               in
 
-              if is_total_loss_smaller then
+              if is_total_loss_smaller then (
                 let left = {
                   s_n = left_n ;
                   s_gamma = left_gamma ;
@@ -504,9 +512,14 @@ class splitter
                   }
                 in
                 best_split := Some (total_loss, curr_split)
+              );
+              total_loss
             )
-          done;
-          !best_split
+            else
+              infinity
+          )
+          (* done; *)
+          in !best_split
 
     method metrics ~in_set ~out_set =
       let wrk_loss = ref 0.0 in
