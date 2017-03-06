@@ -6,7 +6,7 @@ USE_OCAMLFIND = true
 NATIVE_ENABLED = true
 BYTE_ENABLED = true
 
-OCAMLFLAGS  += -dtypes
+OCAMLFLAGS  += -dtypes -g
 OCAMLOPTFLAGS += -inline 100
 OCAMLFINDFLAGS += -syntax camlp4o
 
