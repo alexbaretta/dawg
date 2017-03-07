@@ -457,7 +457,7 @@ class splitter
             (* we can only have a split when the left and right
                approximations are based on one or more observations *)
 
-            if left_n > 0.0 && right_n > 0.0 then (
+            if left_n > min_observations_per_node && right_n > min_observations_per_node then (
 
               let left_gamma  = left.sum_z.(k)    /. left_n  in
               let right_gamma = right.sum_z.(k+1) /. right_n in

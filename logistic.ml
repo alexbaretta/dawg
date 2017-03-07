@@ -788,8 +788,8 @@ class splitter
             (* we can only have a split when the left and right
                approximations are based on one or more observations *)
 
-            if left_n > 0.0 &&
-               right_n > 0.0 &&
+            if left_n > min_observations_per_node &&
+               right_n > min_observations_per_node &&
                left.sum_w.(k) <> 0.0 &&
                right.sum_w.(k+1) <> 0.0
             then (
