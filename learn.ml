@@ -140,7 +140,7 @@ let learn
         epr "[ERROR] the maximum number of features must be positive\n%!";
         exit 1
       ) else (
-        epr "[INFO] max-features = %d" max_features
+        epr "[INFO] max-features = %d\n%!" max_features
       )
   );
 
