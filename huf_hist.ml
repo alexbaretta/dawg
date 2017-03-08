@@ -1,5 +1,5 @@
-let sort_fst_ascending list =
-  Array.sort (fun (v1,_) (v2,_) -> Pervasives.compare v1 v2) list
+let cmp_fst_ascending (v1,_) (v2,_) = Pervasives.compare v1 v2
+let sort_fst_ascending array = Array.sort cmp_fst_ascending array
 
 let make_hist_array of_value na hist_table : ('t * int) array =
   let cardinality = Hashtbl.length hist_table in
@@ -45,6 +45,7 @@ let eval_cdf (cdf : int array) i =
 
 let singleton hist_array i =
   let (v, count) = hist_array.(i) in
+  (* Utils.epr "[DEBUG] singleton: i=%d count=%d\n%!" i count; *)
   { left = v; repr = v; right = v; count = count }
 
 let rec singletons hist_array startp endp accu =
@@ -91,6 +92,7 @@ module Make(Arith:ARITHMETIC) : HUF with type t = Arith.t = struct
     { left; repr; right; count }
 
   let rec huf_one ~nbits hist_array cdf (startp:int) (endp:int) accu =
+    (* Utils.epr "[DEBUG] huf_one: startp=%d endp=%d\n%!" startp endp; *)
     assert (startp <= endp);
     let bins = 1 lsl nbits in
     let levels = endp - startp + 1 in (* Number of distinct values to split into bins *)
@@ -102,12 +104,15 @@ module Make(Arith:ARITHMETIC) : HUF with type t = Arith.t = struct
       range hist_array cdf startp endp :: accu
     else
       let count = count_range cdf startp endp in
-      let median_count = eval_cdf cdf startp + count lsr 1 in
+      let median_count = (eval_cdf cdf (startp-1)) + count lsr 1 in
       let median_p = binary_search ~query:median_count cdf startp endp in
       let nbits = nbits - 1 in
       let min_levels_in_split = 1 lsl nbits in
-      let endp_left = max median_p (startp + min_levels_in_split - 1) in
-      let startp_right = min (median_p + 1) (endp - min_levels_in_split + 1) in
+      let endp_left = min (max median_p (startp + min_levels_in_split - 1)) (endp - min_levels_in_split) in
+      let startp_right = max (min (median_p + 1) (endp - min_levels_in_split + 1)) (startp + min_levels_in_split) in
+      (* Utils.epr "[DEBUG] huf_one: startp=%d(%d) endp=%d(%d) min_levels=%d median_count=%d median_p=%d endp_left=%d startp_right=%d\n%!" *)
+      (*   startp cdf.(startp) endp cdf.(endp) min_levels_in_split median_count median_p endp_left startp_right; *)
+
       let accu = huf_one ~nbits hist_array cdf startp_right endp accu in
       let accu = huf_one ~nbits hist_array cdf startp endp_left accu in
       accu
@@ -115,6 +120,7 @@ module Make(Arith:ARITHMETIC) : HUF with type t = Arith.t = struct
   let huf hist_array max_width =
     let cdf = cdf_of_hist hist_array in
     let t = huf_one ~nbits:max_width hist_array cdf 0 (Array.length hist_array - 1) [] in
+    (* assert (let repr = List.map (fun bin -> bin.repr) t in repr = List.sort compare repr); *)
     Array.of_list t
 
   let bounds bins =

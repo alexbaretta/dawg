@@ -358,9 +358,9 @@ let categorical_feature j kc hist n i_values feature_id_to_name config =
     ) hist ([], 0) in
 
   if n_anonymous = 0 then (
-    (* if num_categories = 1 then *)
-    (*   `Uniform *)
-    (* else ( *)
+    if num_categories = 1 then
+      `Uniform
+    else (
       (* sort so that categories with lower counts first *)
       let category_to_count = List.sort (
           fun (_, count1) (_, count2) ->
@@ -377,27 +377,27 @@ let categorical_feature j kc hist n i_values feature_id_to_name config =
       ) categories;
 
       let i_cats = List.rev_map (
-          fun (i, value) ->
-            match value with
-              | `Int _ | `Float _ -> assert false
-              | `String cat ->
-                i, Hashtbl.find cat_to_cat_id cat
-        ) i_values (* i_values are in i-reverse order *) in
+        fun (i, value) ->
+          match value with
+            | `Int _ | `Float _ -> assert false
+            | `String cat ->
+              i, Hashtbl.find cat_to_cat_id cat
+      ) i_values (* i_values are in i-reverse order *) in
 
       let cat_runs = Rle.encode_sparse n i_cats (-1) in
       let c_vector = `RLE cat_runs in
 
       let cat = `Cat {
-          c_feature_id = j;
-          c_feature_name_opt = feature_id_to_name j;
-          c_categories = categories;
-          c_cardinality = num_categories;
-          c_anonymous_category = None;
-          c_vector
-        } in
-      `NonUniform cat
+        c_feature_id = j;
+        c_feature_name_opt = feature_id_to_name j;
+        c_categories = categories;
+        c_cardinality = num_categories;
+        c_anonymous_category = None;
+        c_vector
+      }
+      in `NonUniform cat
     )
-  else
+  ) else (
     (* some categories are anonymous; assume that this signals
        sparsity *)
     let category_to_count = List.rev_map (
@@ -425,13 +425,13 @@ let categorical_feature j kc hist n i_values feature_id_to_name config =
     let anon_cat_id = Hashtbl.find cat_to_cat_id None in
 
     let i_cats = List.rev_map (
-        fun (i, value) ->
-          match value with
-            | `Int _ | `Float _ -> assert false
-            | `String cat ->
-              let cat_id = Hashtbl.find cat_to_cat_id (Some cat) in
-              i, cat_id
-      ) i_values in (* [i_values] are in i-reversed order *)
+      fun (i, value) ->
+        match value with
+          | `Int _ | `Float _ -> assert false
+          | `String cat ->
+            let cat_id = Hashtbl.find cat_to_cat_id (Some cat) in
+            i, cat_id
+    ) i_values in (* [i_values] are in i-reversed order *)
 
     (* exclude the anonymous category from the list of features;
        otherwise preseving the order of the (Some _) payloads *)
@@ -442,14 +442,15 @@ let categorical_feature j kc hist n i_values feature_id_to_name config =
     let c_vector = `RLE cat_runs in
 
     let cat = `Cat {
-        c_feature_id = j;
-        c_feature_name_opt = feature_id_to_name j;
-        c_categories = categories;
-        c_cardinality;
-        c_anonymous_category = Some anon_cat_id;
-        c_vector
-      } in
-    `NonUniform cat
+      c_feature_id = j;
+      c_feature_name_opt = feature_id_to_name j;
+      c_categories = categories;
+      c_cardinality;
+      c_anonymous_category = Some anon_cat_id;
+      c_vector
+    }
+    in `NonUniform cat
+  )
 
 module DEBUG = struct
   let rec rand_hist max_total_count max_value_incr max_count accu total_count
@@ -549,17 +550,16 @@ let float_or_int_feature
 
     let hist_array = Huf_hist.make_hist_array Csv_types.float_of_value nan hist_table in
 
-    (* if num_distinct_values = 1 then *)
-    (*   `Uniform *)
-    (* else *)
-    let bins = Huf_hist.Float.huf hist_array max_width in
-    let bounds = Huf_hist.Float.bounds bins in
-    let repr_elements = Huf_hist.repr_elements bins in
-    let freq = Huf_hist.freq bins in
-    let breakpoints = { bounds; repr_elements; freq } in
-    ordinal_feature float_zero Csv_types.float_of_value
-      (fun b -> `Float b) ~j i_values breakpoints ~n feature_id_to_name
-
+    if Array.length hist_array = 1 then
+      `Uniform
+    else
+      let bins = Huf_hist.Float.huf hist_array max_width in
+      let bounds = Huf_hist.Float.bounds bins in
+      let repr_elements = Huf_hist.repr_elements bins in
+      let freq = Huf_hist.freq bins in
+      let breakpoints = { bounds; repr_elements; freq } in
+      ordinal_feature float_zero Csv_types.float_of_value
+        (fun b -> `Float b) ~j i_values breakpoints ~n feature_id_to_name
   )
   else (
     (* the value are all ints, but we might cast them to floats if the
