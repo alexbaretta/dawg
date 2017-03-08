@@ -440,6 +440,7 @@ let updated_loss ~gamma  ~sum_l ~sum_z ~sum_w =
 exception EmptyFold
 
 class splitter
+  ~minimize
   ~max_gamma_opt
   ~binarization_threshold_opt
   ~weights
@@ -488,13 +489,15 @@ class splitter
     done
   in
 
-  let agg_of_vector cardinality = function
+  let agg_of_vector cardinality vector =
+    let in_subset_ = !in_subset in
+    match vector with
     | `RLE v ->
       let agg = Aggregate.create cardinality in
       Rlevec.iter v (
         fun ~index ~length ~value ->
           for i = index to index + length - 1 do
-            if !in_subset.(i) then
+            if in_subset_.(i) then
               Aggregate.update agg ~value ~n:weights.(i) ~l:l.(index)
                 ~z:z.(i) ~w:w.(i)
           done
@@ -506,7 +509,7 @@ class splitter
       let width_num_bytes = Utils.num_bytes cardinality in
       Dense.iter ~width:width_num_bytes v (
         fun ~index ~value ->
-          if !in_subset.(index) then
+          if in_subset_.(index) then
             Aggregate.update agg ~value ~n:weights.(index) ~l:l.(index)
               ~z:z.(index) ~w:w.(index)
       );
@@ -671,7 +674,7 @@ class splitter
           (* find and keep optimal split -- the one associated with the
              minimum loss *)
           (* for s = 0 to cardinality-2 do *)
-          let _ = Fibsearch.minimize 0 (cardinality - 2) (fun s ->
+          let _ = minimize 0 (cardinality - 2) (fun s ->
             let k   = s_to_k.(s)   in
             let k_1 = s_to_k.(s+1) in
 
@@ -781,7 +784,7 @@ class splitter
 
           (* find and keep optimal split -- the one associated with the minimum loss *)
           (* for k = 0 to cardinality-2 do *)
-          let _ = Fibsearch.minimize 0 (cardinality - 2) (fun k ->
+          let _ = minimize 0 (cardinality - 2) (fun k ->
             let left_n  = left.sum_n.(k)    in
             let right_n = right.sum_n.(k+1) in
 

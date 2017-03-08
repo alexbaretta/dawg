@@ -1,5 +1,6 @@
 class splitter :
-  max_gamma_opt:float option ->
+  minimize:float Fibsearch.minimizer ->
+    max_gamma_opt:float option ->
     weights:float array ->
     y_feature:Feat.afeature ->
     n_rows:int ->

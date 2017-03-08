@@ -109,6 +109,7 @@ let updated_loss ~gamma  ~sum_l ~sum_z ~sum_n =
 exception EmptyFold of string
 
 class splitter
+  ~minimize
   ~max_gamma_opt
   ~weights
   ~y_feature
@@ -151,16 +152,17 @@ class splitter
     done
   in
 
-  let agg_of_vector cardinality = function
+  let agg_of_vector cardinality vector =
+    let in_subset_ = !in_subset in
+    match vector with
     | `RLE v ->
       (* Utils.epr "[DEBUG] agg_of_vector (RLE)\n%!"; *)
       let agg = Aggregate.create cardinality in
       Rlevec.iter v (
         fun ~index ~length ~value ->
           for i = index to index + length - 1 do
-            if !in_subset.(i) then
-              Aggregate.update agg ~value ~n:weights.(i) ~l:l.(i)
-                ~z:z.(i)
+            if in_subset_.(i) then
+              Aggregate.update agg ~value ~n:weights.(i) ~l:l.(i) ~z:z.(i)
           done
       );
       agg
@@ -171,9 +173,8 @@ class splitter
       let width_num_bytes = Utils.num_bytes cardinality in
       Dense.iter ~width:width_num_bytes v (
         fun ~index ~value ->
-          if !in_subset.(index) then
-            Aggregate.update agg ~value ~n:weights.(index) ~l:l.(index)
-              ~z:z.(index)
+          if in_subset_.(index) then
+            Aggregate.update agg ~value ~n:weights.(index) ~l:l.(index) ~z:z.(index)
       );
       agg
 
@@ -255,9 +256,18 @@ class splitter
       in
       if cardinality - 2 < 0 then None else
 
-      let last = cardinality - 1 in
+      (* let last = cardinality - 1 in *)
       let left = Aggregate.create cardinality in
       let right = Aggregate.create cardinality in
+      let agg_sum_n = agg.sum_n in
+      let agg_sum_z = agg.sum_z in
+      let agg_sum_l = agg.sum_l in
+      let left_sum_n = left.sum_n in
+      let left_sum_z = left.sum_z in
+      let left_sum_l = left.sum_l in
+      let right_sum_n = right.sum_n in
+      let right_sum_z = right.sum_z in
+      let right_sum_l = right.sum_l in
 
       match kind with
         | `Cat ->
@@ -295,13 +305,13 @@ class splitter
           let k_last = s_to_k.(cardinality-1) in
 
           (* initialize the cumulative sums from left to right *)
-          left.sum_n.(k_0) <- agg.sum_n.(k_0);
-          left.sum_z.(k_0) <- agg.sum_z.(k_0);
-          left.sum_l.(k_0) <- agg.sum_l.(k_0);
+          left_sum_n.(k_0) <- agg_sum_n.(k_0);
+          left_sum_z.(k_0) <- agg_sum_z.(k_0);
+          left_sum_l.(k_0) <- agg_sum_l.(k_0);
 
-          right.sum_n.(k_last) <- agg.sum_n.(k_last);
-          right.sum_z.(k_last) <- agg.sum_z.(k_last);
-          right.sum_l.(k_last) <- agg.sum_l.(k_last);
+          right_sum_n.(k_last) <- agg_sum_n.(k_last);
+          right_sum_z.(k_last) <- agg_sum_z.(k_last);
+          right_sum_l.(k_last) <- agg_sum_l.(k_last);
 
           (* compute the cumulative sums from left to right *)
           for ls = 1 to cardinality-1 do
@@ -309,17 +319,17 @@ class splitter
             let lk   = s_to_k.(ls)   in
             let lk_1 = s_to_k.(ls-1) in
 
-            left.sum_n.(lk) <- left.sum_n.(lk_1) +. agg.sum_n.(lk);
-            left.sum_z.(lk) <- left.sum_z.(lk_1) +. agg.sum_z.(lk);
-            left.sum_l.(lk) <- left.sum_l.(lk_1) +. agg.sum_l.(lk);
+            left_sum_n.(lk) <- left_sum_n.(lk_1) +. agg_sum_n.(lk);
+            left_sum_z.(lk) <- left_sum_z.(lk_1) +. agg_sum_z.(lk);
+            left_sum_l.(lk) <- left_sum_l.(lk_1) +. agg_sum_l.(lk);
 
             let rs = cardinality - ls - 1 in
             let rk   = s_to_k.(rs)   in
             let rk_1 = s_to_k.(rs+1) in
 
-            right.sum_n.(rk) <- right.sum_n.(rk_1) +. agg.sum_n.(rk);
-            right.sum_z.(rk) <- right.sum_z.(rk_1) +. agg.sum_z.(rk);
-            right.sum_l.(rk) <- right.sum_l.(rk_1) +. agg.sum_l.(rk);
+            right_sum_n.(rk) <- right_sum_n.(rk_1) +. agg_sum_n.(rk);
+            right_sum_z.(rk) <- right_sum_z.(rk_1) +. agg_sum_z.(rk);
+            right_sum_l.(rk) <- right_sum_l.(rk_1) +. agg_sum_l.(rk);
 
           done;
 
@@ -328,20 +338,20 @@ class splitter
           (* find and keep optimal split -- the one associated with the
              minimum loss *)
           (* for s = 0 to cardinality-2 do *)
-          let _ = Fibsearch.minimize 0 (cardinality - 2) (fun s ->
+          let _ = minimize 0 (cardinality - 2) (fun s ->
             let k   = s_to_k.(s)   in
             let k_1 = s_to_k.(s+1) in
 
-            let left_n  = left.sum_n.(k)    in
-            let right_n = right.sum_n.(k_1) in
+            let left_n  = left_sum_n.(k)    in
+            let right_n = right_sum_n.(k_1) in
 
             (* we can only have a split when the left and right
                approximations are based on one or more observations *)
 
             if left_n > min_observations_per_node && right_n > min_observations_per_node then (
 
-              let left_gamma  = left.sum_z.(k)    /. left_n  in
-              let right_gamma = right.sum_z.(k_1) /. right_n in
+              let left_gamma  = left_sum_z.(k)    /. left_n  in
+              let right_gamma = right_sum_z.(k_1) /. right_n in
 
               let left_gamma, right_gamma =
                 Feat_utils.apply_max_gamma_opt ~max_gamma_opt left_gamma right_gamma
@@ -355,15 +365,15 @@ class splitter
 
                 let loss_left = updated_loss
                   ~gamma:left_gamma
-                  ~sum_l:left.sum_l.(k)
-                  ~sum_z:left.sum_z.(k)
+                  ~sum_l:left_sum_l.(k)
+                  ~sum_z:left_sum_z.(k)
                   ~sum_n:left_n
                 in
 
                 let loss_right = updated_loss
                   ~gamma:right_gamma
-                  ~sum_l:right.sum_l.(k_1)
-                  ~sum_z:right.sum_z.(k_1)
+                  ~sum_l:right_sum_l.(k_1)
+                  ~sum_z:right_sum_z.(k_1)
                   ~sum_n:right_n
                 in
 
@@ -413,54 +423,49 @@ class splitter
         | `Ord ->
 
           (* initialize the cumulative sums in each direction *)
-          left.sum_n.(0) <- agg.sum_n.(0);
-          left.sum_z.(0) <- agg.sum_z.(0);
-          left.sum_l.(0) <- agg.sum_l.(0);
+          (* left_sum_n.(0) <- agg_sum_n.(0); *)
+          (* left_sum_z.(0) <- agg_sum_z.(0); *)
+          (* left_sum_l.(0) <- agg_sum_l.(0); *)
 
-          right.sum_n.(last) <- agg.sum_n.(last);
-          right.sum_z.(last) <- agg.sum_z.(last);
-          right.sum_l.(last) <- agg.sum_l.(last);
+          (* right_sum_n.(last) <- agg_sum_n.(last); *)
+          (* right_sum_z.(last) <- agg_sum_z.(last); *)
+          (* right_sum_l.(last) <- agg_sum_l.(last); *)
 
-          (* compute the cumulative sums *)
-          for lk = 1 to last do
-            left.sum_n.(lk) <- left.sum_n.(lk-1) +. agg.sum_n.(lk);
-            left.sum_z.(lk) <- left.sum_z.(lk-1) +. agg.sum_z.(lk);
-            left.sum_l.(lk) <- left.sum_l.(lk-1) +. agg.sum_l.(lk);
+          (* (\* compute the cumulative sums *\) *)
+          (* for lk = 1 to last do *)
+          (*   left_sum_n.(lk) <- left_sum_n.(lk-1) +. agg_sum_n.(lk); *)
+          (*   left_sum_z.(lk) <- left_sum_z.(lk-1) +. agg_sum_z.(lk); *)
+          (*   left_sum_l.(lk) <- left_sum_l.(lk-1) +. agg_sum_l.(lk); *)
 
-            let rk = cardinality - lk - 1 in
-            right.sum_n.(rk) <- right.sum_n.(rk+1) +. agg.sum_n.(rk);
-            right.sum_z.(rk) <- right.sum_z.(rk+1) +. agg.sum_z.(rk);
-            right.sum_l.(rk) <- right.sum_l.(rk+1) +. agg.sum_l.(rk);
-          done;
+          (*   let rk = cardinality - lk - 1 in *)
+          (*   right_sum_n.(rk) <- right_sum_n.(rk+1) +. agg_sum_n.(rk); *)
+          (*   right_sum_z.(rk) <- right_sum_z.(rk+1) +. agg_sum_z.(rk); *)
+          (*   right_sum_l.(rk) <- right_sum_l.(rk+1) +. agg_sum_l.(rk); *)
+          (* done; *)
 
-          (* epr "[DEBUG] feature_id=%d cardinality=%d kind=%s\n" *)
-          (*   feature_id cardinality *)
-          (*   (match kind with `Ord -> "Ord" | `Cat -> "Cat"); *)
-          (* epr "[DEBUG] a.sum_n.(0)=%f a.sum_n.(1)=%f a.sum_n.(last-1)=%f a.sum_n.(last)=%f\n" *)
-          (*   agg.sum_n.(0) agg.sum_n.(1) *)
-          (*   agg.sum_n.(last-1) agg.sum_n.(last); *)
-          (* epr "[DEBUG] l.sum_n.(0)=%f l.sum_n.(1)=%f l.sum_n.(last-1)=%f l.sum_n.(last)=%f\n" *)
-          (*   left.sum_n.(0) left.sum_n.(1) *)
-          (*   left.sum_n.(last-1) left.sum_n.(last); *)
-          (* epr "[DEBUG] r.sum_n.(0)=%f r.sum_n.(1)=%f r.sum_n.(last-1)=%f r.sum_n.(last)=%f\n%!" *)
-          (*   right.sum_n.(0) right.sum_n.(1) *)
-          (*   right.sum_n.(last-1) right.sum_n.(last); *)
+          let _ : float = Utils.Array.float_cumsum_left agg_sum_n left_sum_n in
+          let _ : float = Utils.Array.float_cumsum_left agg_sum_z left_sum_z in
+          let _ : float = Utils.Array.float_cumsum_left agg_sum_l left_sum_l in
+
+          let _ : float = Utils.Array.float_cumsum_right agg_sum_n right_sum_n in
+          let _ : float = Utils.Array.float_cumsum_right agg_sum_z right_sum_z in
+          let _ : float = Utils.Array.float_cumsum_right agg_sum_l right_sum_l in
 
           let best_split = ref None in
 
           (* find and keep optimal split -- the one associated with the minimum loss *)
           (* for k = 0 to cardinality-2 do *)
-          let _ = Fibsearch.minimize 0 (cardinality - 2) (fun k ->
-            let left_n  = left.sum_n.(k)    in
-            let right_n = right.sum_n.(k+1) in
+          let _ = minimize 0 (cardinality - 2) (fun k ->
+            let left_n  = left_sum_n.(k)    in
+            let right_n = right_sum_n.(k+1) in
 
             (* we can only have a split when the left and right
                approximations are based on one or more observations *)
 
             if left_n > min_observations_per_node && right_n > min_observations_per_node then (
 
-              let left_gamma  = left.sum_z.(k)    /. left_n  in
-              let right_gamma = right.sum_z.(k+1) /. right_n in
+              let left_gamma  = left_sum_z.(k)    /. left_n  in
+              let right_gamma = right_sum_z.(k+1) /. right_n in
 
               let left_gamma, right_gamma =
                 Feat_utils.apply_max_gamma_opt ~max_gamma_opt left_gamma right_gamma
@@ -468,15 +473,15 @@ class splitter
 
               let loss_left = updated_loss
                   ~gamma:left_gamma
-                  ~sum_l:left.sum_l.(k)
-                  ~sum_z:left.sum_z.(k)
+                  ~sum_l:left_sum_l.(k)
+                  ~sum_z:left_sum_z.(k)
                   ~sum_n:left_n
               in
 
               let loss_right = updated_loss
                   ~gamma:right_gamma
-                  ~sum_l:right.sum_l.(k+1)
-                  ~sum_z:right.sum_z.(k+1)
+                  ~sum_l:right_sum_l.(k+1)
+                  ~sum_z:right_sum_z.(k+1)
                   ~sum_n:right_n
               in
 

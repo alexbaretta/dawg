@@ -74,6 +74,8 @@ let learn
     exclude_nan_target
     exclude_inf_target
     stochastic_gradient
+    best_split_algo_string
+    ()
   =
 
   if max_depth < 1 then (
@@ -267,6 +269,17 @@ let learn
       (List.map (fun name -> ((`Name name), `Negative)) (SSet.to_list negative_feature_names))
       feature_monotonicity in
 
+  let best_split_algo_string = String.lowercase_ascii best_split_algo_string in
+  let best_split_algo =
+    match best_split_algo_string with
+      | "fibonacci" -> `Fibonacci
+      | "exhaustive" -> `Exhaustive
+      | s ->
+        epr "[ERROR] unrecognized --best-split-algo=%S\n%!" s;
+        exit 1
+  in
+  Utils.epr "[INFO] best-split-algo=%s\n%!" best_split_algo_string;
+
   let conf =
     let open Sgbt in
     {
@@ -294,6 +307,7 @@ let learn
       exclude_nan_target;
       exclude_inf_target;
       stochastic_gradient;
+      best_split_algo;
     }
   in
 
@@ -540,6 +554,13 @@ let commands =
                  training set to be used at each iteration." in
       Arg.(value & opt bool true & info ["stochastic-gradient"] ~docv:"BOOL" ~doc)
     in
+    let best_split_algo_string =
+      let doc = "Select algorithm to find best split. Options are `fibonacci' \
+                 and `exhaustive'. Fibonacci search is much faster than exhaustive \
+                 search, but it might converge to a local minimum. \
+                 Default is `exhaustive'." in
+      Arg.(value & opt string "exhaustive" & info ["best-split-algo"] ~docv:"[fibonacci|exhaustive]" ~doc)
+    in
 
     Term.(pure learn $
             input_file_path $
@@ -574,7 +595,9 @@ let commands =
             feature_id_negative $
             exclude_nan_target $
             exclude_inf_target $
-            stochastic_gradient
+            stochastic_gradient $
+            best_split_algo_string $
+            const ()
          ),
     Term.info "learn" ~doc
   in

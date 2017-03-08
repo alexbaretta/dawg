@@ -229,3 +229,43 @@ module List = struct
       first [] n list
 
 end
+
+
+module Array = struct
+  include Array
+
+  let rec foldi_left_from f i init a =
+    if i < Array.length a then
+      let next = f i init a.(i) in
+      foldi_left_from f (succ i) next a
+    else
+      init
+
+  let foldi_left f init a =
+    foldi_left_from f 0 init a
+
+  let rec foldi_right_from f i a init =
+    if i > 0 then
+      let next = f i a.(i) init in
+      foldi_right_from f (pred i) a next
+    else
+      init
+
+  let foldi_right f a init =
+    foldi_right_from f (Array.length a - 1) a init
+
+  let float_cumsum_left a b =
+    foldi_left (fun i accu elem ->
+      let accu = accu +. elem in
+      b.(i) <- accu;
+      accu
+    ) 0.0 a
+
+  let float_cumsum_right a b =
+    foldi_right (fun i elem accu ->
+      let accu = accu +. elem in
+      b.(i) <- accu;
+      accu
+    ) a 0.0
+
+end

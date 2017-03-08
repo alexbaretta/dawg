@@ -32,9 +32,13 @@ type conf = {
   exclude_nan_target : bool;
   exclude_inf_target : bool;
   stochastic_gradient : bool;
+  best_split_algo : [ `Fibonacci | `Exhaustive ];
 }
 
 type t = {
+  (* Unix.gettimeofday() *)
+  start_time : float;
+
   (* how many observations are there in the training set? *)
   n_rows : int;
 
@@ -76,6 +80,8 @@ type learning_iteration = {
      identifying the optimal termination point? This fold is the
      validation fold. *)
   fold_id : int;
+  fold_start_time : float; (* Unix.gettimeofday() *)
+  tree_start_time : float;
 
   (* is the observation in the 'working folds' or the 'validation
      fold' ?  *)
@@ -141,8 +147,13 @@ let rec learn_with_fold_rate conf t iteration =
       Model_t.fold_id = iteration.fold_id;
       mean = iteration.mean_model;
       trees = List.rev iteration.rev_trees;
-    }
-    in
+    } in
+    let now = Unix.gettimeofday() in
+    Utils.epr "%6.0fs %6.2fs fold %i converged\n%!"
+      (now -. t.start_time)
+      (now -. iteration.fold_start_time)
+      iteration.fold_id;
+
     `Converged (iteration.learning_rate, fold)
   in
 
@@ -171,8 +182,10 @@ let rec learn_with_fold_rate conf t iteration =
           let convergence_rate_smoother = Rls1.add
               iteration.convergence_rate_smoother convergence_rate in
           let convergence_rate_hat = Rls1.theta convergence_rate_smoother in
-
-          Utils.pr "iter % 3d % 7d  %s %s    %+.4e %+.4e\n%!"
+          let now = Unix.gettimeofday () in
+          Utils.pr "%6.0fs %6.2fs iter % 3d % 7d  %s %s    %+.4e %+.4e\n%!"
+            (now -. iteration.fold_start_time)
+            (now -. iteration.tree_start_time)
             iteration.fold_id
             iteration.i
             s_wrk
@@ -203,6 +216,7 @@ let rec learn_with_fold_rate conf t iteration =
             { iteration with
               prev_loss = val_loss;
               i = iteration.i + 1;
+              tree_start_time = Unix.gettimeofday();
               rev_trees = shrunken_tree :: iteration.rev_trees;
               convergence_rate_smoother;
               selected_features;
@@ -265,6 +279,7 @@ and cut_learning_rate conf t iteration =
       random_state = Random.State.make new_random_seed;
       prev_loss = iteration.first_loss;
       i = 1;
+      tree_start_time = Unix.gettimeofday();
       rev_trees = [];
   } in
   learn_with_fold_rate conf t iteration
@@ -287,7 +302,7 @@ let learn_with_fold conf t fold_id initial_learning_rate deadline =
     t.splitter#metrics ~in_set ~out_set
   in
 
-  Utils.pr "fold % 3d          %s %s\n%!" fold_id s_wrk s_val;
+  Utils.pr "% 15s fold % 3d          %s %s\n%!" "" fold_id s_wrk s_val;
 
   let new_random_seed = [| Random.int 10_000 |] in
 
@@ -302,8 +317,12 @@ let learn_with_fold conf t fold_id initial_learning_rate deadline =
   let convergence_rate_smoother = Rls1.create
       conf.convergence_rate_smoother_forgetful_factor in
 
+  let now = Unix.gettimeofday() in
   let iteration = {
     i = 1;
+    fold_start_time = now;
+    tree_start_time = now;
+
     fold_id;
     in_set;
     out_set;
@@ -594,10 +613,16 @@ let learn conf =
   Utils.pr "features: included=%d excluded=%d\n%!"
     (Feat_map.length feature_map) num_excluded_features;
 
+  let minimize = match conf.best_split_algo with
+    | `Fibonacci -> Fibsearch.minimize
+    | `Exhaustive -> Fibsearch.minimize_exhaustive
+  in
+
   let splitter : Loss.splitter =
     match conf.loss_type with
       | `Logistic ->
         new Logistic.splitter
+          ~minimize
           ~max_gamma_opt:conf.max_gamma_opt
           ~binarization_threshold_opt:conf.binarization_threshold_opt
           ~weights
@@ -607,6 +632,7 @@ let learn conf =
           ~min_observations_per_node:conf.min_observations_per_node
       | `Square ->
         new Square.splitter
+          ~minimize
           ~max_gamma_opt:conf.max_gamma_opt
           ~weights
           ~y_feature:a_y_feature
@@ -618,6 +644,7 @@ let learn conf =
   let eval = Tree.mk_eval n_rows in
 
   let t = {
+    start_time = Unix.gettimeofday();
     n_rows;
     feature_map;
     splitter;

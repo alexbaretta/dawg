@@ -63,3 +63,15 @@ end
 
 module IntMap : XMapS with type key = int
 module IntSet : XSetS with type elt = int
+
+module Array : sig
+  include module type of Array
+  val foldi_left_from :
+    (int -> 'a -> 'b -> 'a) -> int -> 'a -> 'b array -> 'a
+  val foldi_left : (int -> 'a -> 'b -> 'a) -> 'a -> 'b array -> 'a
+  val foldi_right_from :
+    (int -> 'a -> 'b -> 'b) -> int -> 'a array -> 'b -> 'b
+  val foldi_right : (int -> 'a -> 'b -> 'b) -> 'a array -> 'b -> 'b
+  val float_cumsum_left : float array -> float array -> float
+  val float_cumsum_right : float array -> float array -> float
+end

@@ -1,3 +1,5 @@
+type 'a minimizer = int -> int -> (int -> 'a) -> int * 'a
+
 let rec fibs n1 n2 len =
   let n = n1 + n2 - 1 in
   if n >= len then (n, n1) else
@@ -122,6 +124,19 @@ let rec minimize l r f =
         left ()
       else
         right ()
+
+
+let rec minimize_exhaustive l r f =
+  let best_arg = ref l in
+  let best_val = ref (f l) in
+  for i = l + 1 to r do
+    let f_i = f i in
+    if f_i < !best_val then (
+      best_val := f_i;
+      best_arg := i
+    )
+  done;
+  (!best_arg, !best_val)
 
 (* let f n = 3 * n * n - 37 * n *)
 (* let x_ = minimize ~f 0 34 *)
