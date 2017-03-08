@@ -28,3 +28,7 @@ val i_to_a : (int -> Vec.t) -> Feat.ifeature -> Feat.afeature
 type feature_descr = [ `Name of string | `Id of int ]
 val string_of_feature_descr : feature_descr -> string
 val feature_descr_of_string : string -> feature_descr option
+
+val iter_ord_feature : (int -> float -> unit) -> (Vec.t, Vec.t) Dog_t.ord_feature -> unit
+val repr_array_of_ord_feature : int -> (Vec.t, Vec.t) Dog_t.ord_feature -> float array
+val repr_table_of_ord_features: int -> (Vec.t, Vec.t) Dog_t.ord_feature array -> float array array

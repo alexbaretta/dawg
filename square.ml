@@ -18,68 +18,10 @@ let string_of_metrics { n; loss } =
   Printf.sprintf "% 6.2f %.4e" n loss
 
 let y_repr_array y_feature n =
-  let y = Array.make n nan in
   let open Dog_t in
-  (match y_feature with
-    | `Cat _ ->
-      raise Loss.WrongTargetType
-
-    | `Ord { o_vector; o_breakpoints; o_cardinality } -> (
-        match o_vector with
-          | `RLE rle -> (
-              match o_breakpoints with
-                | `Float breakpoints ->
-                  let repr_elements = breakpoints.repr_elements in
-                  Rlevec.iter rle (
-                    fun ~index ~length ~value ->
-                      for i = index to index + length - 1 do
-                        y.(i) <- repr_elements.(value)
-                      done
-                  )
-
-                | `Int breakpoints ->
-                  let repr_elements = breakpoints.repr_elements in
-                  Rlevec.iter rle (
-                    fun ~index ~length ~value ->
-                      for i = index to index + length - 1 do
-                        y.(i) <- float repr_elements.(value)
-                      done
-                  )
-            )
-
-          | `Dense vec -> (
-              let width = Utils.num_bytes o_cardinality in
-              match o_breakpoints with
-                | `Float breakpoints ->
-                  let repr_elements = breakpoints.repr_elements in
-                 Dense.iter ~width vec (
-                    fun ~index ~value ->
-                      y.( index ) <- repr_elements.(value)
-                  )
-
-                | `Int breakpoints ->
-                  let repr_elements = breakpoints.repr_elements in
-                  Dense.iter ~width vec (
-                    fun ~index ~value ->
-                      y.( index ) <- float repr_elements.(value)
-                  )
-            )
-      )
-  );
-  assert (
-    try
-      for i = 0 to n-1 do
-        match classify_float y.(i) with
-          | FP_nan ->
-            Printf.printf "y.(%d)=%f\n%!" i y.(i);
-            raise Sys.Break
-          | _ -> ()
-      done;
-      true
-    with Sys.Break ->
-      false
-  );
-  y
+  match y_feature with
+    | `Ord ord_feature -> Feat_utils.repr_array_of_ord_feature n ord_feature
+    | `Cat _ -> raise Loss.WrongTargetType
 
 module Aggregate = struct
   type t = {

@@ -270,3 +270,77 @@ let feature_descr_of_string = function
   | RE "name:" (_+ as name) -> Some (`Name name)
   | RE "id:" (int as id) -> Some (`Id (int_of_string id))
   | _ -> None
+
+let iter_ord_feature f y_feature =
+  let open Dog_t in
+  let { o_vector; o_breakpoints; o_cardinality } = y_feature in
+  match o_vector with
+    | `RLE vec -> (
+      match o_breakpoints with
+        | `Float breakpoints ->
+          let repr_elements = breakpoints.repr_elements in
+          Rlevec.iter vec (
+            fun ~index ~length ~value ->
+              for i = index to index + length - 1 do
+                f i repr_elements.(value)
+              done
+          )
+
+        | `Int breakpoints ->
+          let repr_elements = breakpoints.repr_elements in
+          Rlevec.iter vec (
+            fun ~index ~length ~value ->
+              for i = index to index + length - 1 do
+                f i (float repr_elements.(value))
+              done
+          )
+    )
+
+    | `Dense vec -> (
+      let width = Utils.num_bytes o_cardinality in
+      match o_breakpoints with
+        | `Float breakpoints ->
+          let repr_elements = breakpoints.repr_elements in
+          Dense.iter ~width vec (
+            fun ~index ~value ->
+              f index repr_elements.(value)
+          )
+
+        | `Int breakpoints ->
+          let repr_elements = breakpoints.repr_elements in
+          Dense.iter ~width vec (
+            fun ~index ~value ->
+              f index (float repr_elements.(value))
+          )
+    )
+
+let repr_array_of_ord_feature n_obs y_feature =
+  let open Dog_t in
+  let y = Array.make n_obs nan in
+  iter_ord_feature (Array.set y) y_feature;
+  assert (
+    try
+      for i = 0 to Array.length y - 1 do
+        match classify_float y.(i) with
+          | FP_nan ->
+            Printf.printf "y.(%d)=%f\n%!" i y.(i);
+            raise Sys.Break
+          | _ -> ()
+      done;
+      true
+    with Sys.Break ->
+      false
+  );
+  y
+
+let repr_table_of_ord_features n_obs y_features =
+  let m = Array.length y_features in
+  let ys = Array.init n_obs (fun _ -> Array.make m nan) in
+  (* ys is a column-major matrix: we want every row to be contiguous in memory *)
+
+  Array.iteri (fun col feature ->
+    iter_ord_feature (fun row value ->
+      ys.(col).(row) <- value
+    ) feature
+  ) y_features;
+  ys
