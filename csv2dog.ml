@@ -497,25 +497,25 @@ let ordinal_feature
   let bounds = breakpoints.bounds in
   let repr_elements = breakpoints.repr_elements in
   let o_cardinality = Array.length repr_elements in
-
-  (* Attention: We need to find the bin, not the bound. We have n bins but n-1 bounds. *)
-  let find x = Binary_search.find_r bounds x 0 (o_cardinality - 1) in
-  let i_rank = List.rev_map (
+  if o_cardinality <= 1 then `Uniform else
+    (* Attention: We need to find the bin, not the bound. We have n bins but n-1 bounds. *)
+    let find x = Binary_search.find_r bounds x 0 (o_cardinality - 1) in
+    let i_rank = List.rev_map (
       fun (i, value) ->
         let rank = find (of_value value) in
         i, rank
     ) i_values in (* [i_values] are in i-reversed order *)
-  let zero_rank = find (of_value zero) in
-  let rank_runs = Rle.encode_sparse n i_rank zero_rank in
-  let o_vector = `RLE rank_runs in
-  let ord = `Ord {
+    let zero_rank = find (of_value zero) in
+    let rank_runs = Rle.encode_sparse n i_rank zero_rank in
+    let o_vector = `RLE rank_runs in
+    let ord = `Ord {
       o_feature_id = j;
       o_feature_name_opt = feature_id_to_name j;
       o_cardinality;
       o_vector;
       o_breakpoints = to_breakpoints breakpoints;
     } in
-  `NonUniform ord
+    `NonUniform ord
 
 let float_or_int_feature
     ~j
