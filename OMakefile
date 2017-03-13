@@ -6,7 +6,7 @@ USE_OCAMLFIND = true
 NATIVE_ENABLED = true
 BYTE_ENABLED = true
 
-OCAMLFLAGS  += -dtypes -g
+OCAMLFLAGS  += -dtypes
 OCAMLOPTFLAGS += -inline 100
 OCAMLFINDFLAGS += -syntax camlp4o
 
@@ -98,6 +98,7 @@ FILES[] =
   feat
   trie
   fibsearch
+  #custom_loss
 
 # Disable camlp4 for utils.cmi
 # Reason: camlp4 3.12 does not support `module type of <Module>" syntax
@@ -106,7 +107,7 @@ section
   utils.cmo utils.cmi utils.cmx utils.o : utils.ml utils.mli
 
 TARGETS = \
-   $(OCamlProgram dawg, $(FILES) ) \
+   $(OCamlProgram dawg-rl, $(FILES) ) \
    $(OCamlProgram t_rlevec , test_rlevec $(FILES) ) \
    $(OCamlProgram t_sm , test_stream_merge stream_merge heap ) \
    $(OCamlProgram t_rle, test_rle rle utils ) \

@@ -271,6 +271,29 @@ let feature_descr_of_string = function
   | RE "id:" (int as id) -> Some (`Id (int_of_string id))
   | _ -> None
 
+let descr_of_feature feature =
+  match feature with
+    | `Cat { c_feature_name_opt = name_opt; c_feature_id = id }
+    | `Ord { o_feature_name_opt = name_opt; o_feature_id = id } ->
+      match name_opt with
+        | Some name -> `Name name
+        | None -> `Id id
+
+let descr_of_ord_feature feature =
+  match feature with
+    | { o_feature_name_opt = name_opt; o_feature_id = id } ->
+      match name_opt with
+        | Some name -> `Name name
+        | None -> `Id id
+
+let descr_of_cat_feature feature =
+  match feature with
+    | { c_feature_name_opt = name_opt; c_feature_id = id } ->
+      match name_opt with
+        | Some name -> `Name name
+        | None -> `Id id
+
+
 let iter_ord_feature f y_feature =
   let open Dog_t in
   let { o_vector; o_breakpoints; o_cardinality } = y_feature in

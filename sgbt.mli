@@ -9,7 +9,7 @@ type conf = {
   min_observations_per_node : float;
   min_convergence_rate : float;
   initial_learning_rate : float;
-  y : Feat_utils.feature_descr;
+  ys : Feat_utils.feature_descr list;
   max_depth : int;
   convergence_rate_smoother_forgetful_factor : float;
   deadline : float option;

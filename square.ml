@@ -21,7 +21,7 @@ let y_repr_array y_feature n =
   let open Dog_t in
   match y_feature with
     | `Ord ord_feature -> Feat_utils.repr_array_of_ord_feature n ord_feature
-    | `Cat _ -> raise Loss.WrongTargetType
+    | `Cat cat -> raise (Loss.WrongTargetType (Feat_utils.descr_of_cat_feature cat))
 
 module Aggregate = struct
   type t = {

@@ -168,7 +168,7 @@ let y_array_of_cat n cat =
   let open Dog_t in
   let y = Array.make n nan in
   if cat.c_cardinality <> 2 then
-    raise Loss.WrongTargetType;
+    raise (Loss.WrongTargetType (Feat_utils.descr_of_cat_feature cat));
 
   match cat.c_anonymous_category with
     | Some anon_value -> (
@@ -246,7 +246,8 @@ let y_repr_of_ord n ord =
             Some (string_of_int v0)
           | _ -> assert false
         )
-      | _ -> raise Loss.WrongTargetType
+      | _ ->
+        raise (Loss.WrongTargetType (Feat_utils.descr_of_ord_feature ord));
   in
 
   (match o_vector with
@@ -384,7 +385,8 @@ let y_array_of_feature binarization_threshold_opt y_feature n =
   let y, p, n_opt =
     match y_feature with
       | `Cat _ when binarization_threshold_opt <> None ->
-        raise Loss.WrongTargetType
+        raise (Loss.WrongTargetType (Feat_utils.descr_of_feature y_feature));
+
       | `Cat cat -> y_array_of_cat n cat
       | `Ord ord ->
         match binarization_threshold_opt with
@@ -953,7 +955,7 @@ class splitter
       let n_true = !n_true in
       let n_false = !n_false in
       if n_false = 0.0 || n_true = 0.0 then
-        raise Loss.BadTargetDistribution
+        raise (Loss.BadTargetDistribution (Feat_utils.descr_of_feature y_feature))
       else
         let gamma0 = 0.5 *. (log (n_true /. n_false)) in
         gamma0

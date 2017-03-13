@@ -5,6 +5,8 @@ module SSet = Utils.XSet(String)
 let pr = Utils.pr
 let epr = Utils.epr
 
+let split_args s = Pcre.split ~pat:"[ \n\r\t,]" s
+
 let seconds_of_string = function
   | RE (float as number : float ) ( 's' | 'S' ) -> (* seconds *)
     Some number
@@ -30,6 +32,22 @@ let deadline_of_string str =
       let now = Unix.gettimeofday () in
       now +. delta_seconds
 
+let feature_descr_of_name name = `Name name
+let feature_descr_of_id id = `Id id
+
+let feature_descr_of_arg name_opt id_opt =
+  match name_opt, id_opt with
+    | None, None -> None
+    | Some _, Some _ ->
+      epr "[ERROR] can only specify the a feature by its name or its id, not both\n%!";
+      exit 1
+    | Some s, None ->
+      let fd = feature_descr_of_name s in
+      Some fd
+    | None, Some fd ->
+      let fd = feature_descr_of_id fd in
+      Some fd
+
 let feature_descr_of_args name_opt id_opt =
   match name_opt, id_opt with
     | None, None -> None
@@ -37,8 +55,15 @@ let feature_descr_of_args name_opt id_opt =
       epr "[ERROR] can only specify the a feature by its name or its id, not both\n%!";
       exit 1
 
-    | Some name, None -> Some (`Name name)
-    | None, Some id -> Some (`Id id)
+    | Some s, None ->
+      let ss = split_args s in
+      let fds = List.map feature_descr_of_name ss in
+      Some fds
+    | None, Some s ->
+      let ss = split_args s in
+      let ids = List.map int_of_string ss in
+      let fds = List.map feature_descr_of_id ids in
+      Some fds
 
 let learn
     dog_file_path
@@ -197,20 +222,20 @@ let learn
         exit 1
   in
 
-  let y =
+  let ys =
     match feature_descr_of_args y_name_opt y_id_opt with
+      | Some x -> x
       | None ->
         epr "[ERROR] no target feature specified\n%!";
         exit 1
-      | Some y -> y
   in
 
   let fold_feature_opt =
-    feature_descr_of_args fold_feature_name_opt fold_feature_id_opt
+    feature_descr_of_arg fold_feature_name_opt fold_feature_id_opt
   in
 
   let weight_feature_opt =
-    feature_descr_of_args weight_feature_name_opt weight_feature_id_opt
+    feature_descr_of_arg weight_feature_name_opt weight_feature_id_opt
   in
 
   let binarization_threshold_opt =
@@ -285,7 +310,7 @@ let learn
     {
       loss_type;
       dog_file_path;
-      y;
+      ys;
       num_folds;
       only_fold_id;
       min_observations_per_node;
@@ -314,11 +339,11 @@ let learn
   try
     Sgbt.learn conf
   with
-    | Loss.WrongTargetType ->
+    | Loss.WrongTargetType y ->
       epr "[ERROR] target %s is not binary\n%!"
         (Feat_utils.string_of_feature_descr y);
       exit 1
-    | Loss.BadTargetDistribution ->
+    | Loss.BadTargetDistribution y ->
       epr "[ERROR] target %s has a bad distribution\n%!"
         (Feat_utils.string_of_feature_descr y);
       exit 1
@@ -336,15 +361,17 @@ let commands =
            info ["i";"input"] ~docv:"PATH" ~doc)
     in
     let y_name =
-      let doc = "the name of the response feature" in
+      let doc = "the name(s) of the response feature(s)" in
       Arg.(value & opt (some string) None &
-           info ["y";"response-name"] ~docv:"NAME" ~doc)
+           info ["y";"y-name";"response-name"] ~docv:"LIST" ~doc)
     in
 
     let y_id =
-      let doc = "the id of the response feature" in
-      Arg.(value & opt (some int) None &
-           info ["y-id";"response-id"] ~docv:"INT" ~doc)
+      let doc = "the id(s) of the response feature(s): if you need to provide \
+                 more than one response such as for custom loss models, \
+                 use a comma or space separated list" in
+      Arg.(value & opt (some string) None &
+           info ["Y";"y-id"; "response-id"] ~docv:"INT" ~doc)
     in
 
     let max_depth =

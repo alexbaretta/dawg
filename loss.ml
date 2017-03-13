@@ -1,5 +1,5 @@
-exception WrongTargetType
-exception BadTargetDistribution
+exception WrongTargetType of Feat_utils.feature_descr
+exception BadTargetDistribution of Feat_utils.feature_descr
 
 type metrics = {
   (* string rendering of working-fold loss metrics *)

@@ -15,7 +15,7 @@ type conf = {
   min_observations_per_node : float;
   min_convergence_rate : float;
   initial_learning_rate : float;
-  y : Feat_utils.feature_descr;
+  ys : Feat_utils.feature_descr list;
   max_depth : int;
   convergence_rate_smoother_forgetful_factor : float;
   deadline : float option;
@@ -163,6 +163,7 @@ let rec learn_with_fold_rate conf t iteration =
       converge iteration
 
     | Some tree ->
+      let tree = Tree.scale_optimally tree in_subset in
       let shrunken_tree = Tree.shrink iteration.learning_rate tree in
       let gamma = t.eval (Feat_map.a_find_by_id t.feature_map) shrunken_tree in
 
@@ -340,16 +341,15 @@ let learn_with_fold conf t fold_id initial_learning_rate deadline =
 
   learn_with_fold_rate conf t iteration
 
-let folds_and_weights conf sampler feature_map n a_y_feature =
-  let y_feature_id = Feat_utils.id_of_feature a_y_feature in
-  let folds, feature_map = match conf.fold_feature_opt with
+let folds_and_weights conf sampler feature_map n =
+  let fold_feature_id, folds, feature_map = match conf.fold_feature_opt with
     | None ->
       (* randomly choose fold assignments *)
       let folds = Sampler.array (
           fun ~index ~value ->
             value mod conf.num_folds
         ) sampler in
-      folds, feature_map
+      None, folds, feature_map
 
     | Some fold_feature ->
 
@@ -370,10 +370,6 @@ let folds_and_weights conf sampler feature_map n a_y_feature =
              more than one) *)
           let i_fold_feature = List.hd fold_features in
           let fold_feature_id = Feat_utils.id_of_feature i_fold_feature in
-          if fold_feature_id = y_feature_id then (
-            Utils.epr "[ERROR] Fold feature and target feature must be different\n%!";
-            exit 1
-          );
 
           (* fold feature found; use it to construct folds *)
           let a_fold_feature = Feat_map.i_to_a feature_map i_fold_feature in
@@ -411,7 +407,7 @@ let folds_and_weights conf sampler feature_map n a_y_feature =
                     in
                     Feat_map.remove feature_map_0 fold_feature_id
                 ) feature_map fold_features  in
-              folds, feature_map
+             Some fold_feature_id, folds, feature_map
   in
 
   let weights = match conf.weight_feature_opt with
@@ -441,11 +437,6 @@ let folds_and_weights conf sampler feature_map n a_y_feature =
 
           (* there is exactly one weight feature) *)
           let i_weight_feature = List.hd weight_features in
-          let weight_feature_id = Feat_utils.id_of_feature i_weight_feature in
-          if weight_feature_id = y_feature_id then (
-            Utils.epr "[ERROR] weights feature and target feature must be different\n%!";
-            exit 1
-          );
 
           (* weight feature found; use it *)
           let a_weight_feature = Feat_map.i_to_a feature_map i_weight_feature in
@@ -468,36 +459,33 @@ let folds_and_weights conf sampler feature_map n a_y_feature =
           weights
   in
 
-  let y_array = Feat_utils.repr_of_afeature a_y_feature in
+  fold_feature_id, folds, weights, feature_map
 
-  let () =
-    if conf.exclude_inf_target || conf.exclude_nan_target then (
-      Utils.epr "[INFO] exclude_inf_target=%b exclude_nan_target=%b\n%!"
-        conf.exclude_inf_target conf.exclude_nan_target;
-      match y_array with
-        | `Float y_values ->
-          let count_inf = ref 0 in
-          let count_nan = ref 0 in
-          Array.iteri (fun i (_, y_value) ->
-        (* Let's exclude any bad data by setting the fold to -1. *)
-            match classify_float y_value with
-            | FP_infinite when conf.exclude_inf_target ->
-              folds.(i) <- -1;
-              incr count_inf
-            | FP_nan when conf.exclude_nan_target ->
-              folds.(i) <- -1;
-              incr count_nan
+let extract_y_features ~fold_feature_id feature_map ys =
+  List.fold_right (fun y accu ->
+    match Feat_map.find feature_map y with
+      | [] ->
+        Utils.epr "[ERROR] target %s not found\n%!"
+          (Feat_utils.string_of_feature_descr y);
+        exit 1
+
+      | i_ys ->
+        List.fold_right (fun i_y_feature (i_y_features, a_y_features, feature_map) ->
+          let a_y_feature = Feat_map.i_to_a feature_map i_y_feature in
+          let y_feature_id = Feat_utils.id_of_feature a_y_feature in
+          let () = match fold_feature_id with
+            | Some id when id = y_feature_id  ->
+              Utils.epr "[ERROR] Fold feature and target feature must be different\n%!";
+              exit 1
             | _ -> ()
-          ) y_values;
-          let n_rows = Array.length y_values in
-          if !count_inf <> 0 then
-            Utils.epr "[WARNING] excluding %d inf rows out of %d\n%!" !count_inf n_rows;
-          if !count_nan <> 0 then
-            Utils.epr "[WARNING] excluding %d nan rows out of %d\n%!" !count_nan n_rows
-        | _ -> ()
-    )
-  in
-  folds, weights, feature_map
+          in
+          let i_y_features = i_y_feature :: i_y_features in
+          let a_y_features = a_y_feature :: a_y_features in
+          let feature_map = Feat_map.remove feature_map (Feat_utils.id_of_feature i_y_feature) in
+          i_y_features, a_y_features, feature_map
+        ) i_ys accu
+  ) ys ([], [], feature_map)
+
 
 let learn conf =
   let dog_reader = Dog_io.RO.create conf.dog_file_path in
@@ -516,33 +504,16 @@ let learn conf =
     exit 1
   );
 
-  let i_y_feature, a_y_feature =
-    match Feat_map.find feature_map conf.y with
-      | [] ->
-        Utils.epr "[ERROR] target %s not found\n%!"
-          (Feat_utils.string_of_feature_descr conf.y);
-        exit 1
-
-      | (_ :: _ :: _) as y_features ->
-        Utils.epr "[ERROR] %d target features satisfying %s found; only one expected\n%!"
-          (List.length y_features)
-          (Feat_utils.string_of_feature_descr conf.y);
-        exit 1
-
-      | [i_y_feature] ->
-        i_y_feature, Feat_map.i_to_a feature_map i_y_feature
-  in
-
-  (* remove target from the feature set *)
-  let feature_map = Feat_map.remove feature_map
-      (Feat_utils.id_of_feature i_y_feature) in
 
   let random_state = Random.State.make random_seed in
   let sampler = Sampler.create n_rows in
   Sampler.shuffle sampler random_state;
 
-  let folds, weights, feature_map =
-    folds_and_weights conf sampler feature_map n_rows a_y_feature
+  let fold_feature_id, folds, weights, feature_map =
+    folds_and_weights conf sampler feature_map n_rows
+  in
+  let i_y_features, a_y_features, feature_map =
+    extract_y_features ~fold_feature_id feature_map conf.ys
   in
 
   let num_all_features = Feat_map.length feature_map in
@@ -613,21 +584,41 @@ let learn conf =
   let splitter : Loss.splitter =
     match conf.loss_type with
       | `Logistic ->
+        let y_feature = match a_y_features with
+          | [] ->
+            Utils.epr "[ERROR] no target feature for logistic model";
+            exit 1
+          | [y_feature] -> y_feature
+          | _ :: _ :: _ ->
+            Utils.epr "[ERROR] too many features for logistic model";
+            Utils.epr "[ERROR] currently logistic models support only 1 target";
+            exit 1
+        in
         new Logistic.splitter
           ~minimize
           ~max_gamma_opt:conf.max_gamma_opt
           ~binarization_threshold_opt:conf.binarization_threshold_opt
           ~weights
-          ~y_feature:a_y_feature
+          ~y_feature
           ~n_rows
           ~num_observations
           ~min_observations_per_node:conf.min_observations_per_node
       | `Square ->
+        let y_feature = match a_y_features with
+          | [] ->
+            Utils.epr "[ERROR] no target feature for square error model";
+            exit 1
+          | [y_feature] -> y_feature
+          | _ :: _ :: _ ->
+            Utils.epr "[ERROR] too many features for squre error model";
+            Utils.epr "[ERROR] currently square error models support only 1 target";
+            exit 1
+        in
         new Square.splitter
           ~minimize
           ~max_gamma_opt:conf.max_gamma_opt
           ~weights
-          ~y_feature:a_y_feature
+          ~y_feature
           ~n_rows
           ~num_observations
           ~min_observations_per_node:conf.min_observations_per_node

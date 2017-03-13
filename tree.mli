@@ -13,6 +13,7 @@ type m = {
 }
 
 val make : m -> int -> bool array -> Model_t.l_tree option
+val scale_optimally : Model_t.l_tree -> bool array -> Model_t.l_tree
 val shrink : float -> Model_t.l_tree -> Model_t.l_tree
 val extract_features : Model_t.l_tree -> Utils.IntSet.t
 val mk_eval : int ->

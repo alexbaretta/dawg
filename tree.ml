@@ -165,6 +165,9 @@ let rec terminate (best_split : Proto_t.split) =
     in
     Some node
 
+and scale_optimally tree in_subset =
+  tree
+
 and make m depth in_subset =
   m.splitter#update_with_subset in_subset;
   match best_split_of_features m with
