@@ -167,7 +167,7 @@ let write_cells_to_work_dir work_dir header next_row config =
       c + 1, f
     )
     else (
-      Printf.printf "sorting ... %!";
+      Printf.printf "sorting files=%d cells=%d ... %!" f c;
       Array.sort compare_cells cells;
       Printf.printf "done\n%!";
       write_cells_to_file work_dir f cells;
@@ -178,7 +178,7 @@ let write_cells_to_work_dir work_dir header next_row config =
   in
 
   let rec loop ~cell_row ~f ~c prev_dense_row_length_opt =
-    if c mod 1000 = 0 then
+    if cell_row mod 1000 = 0 then
       Printf.printf "files=%d rows=%d\n%!" f cell_row;
 
     match next_row () with
