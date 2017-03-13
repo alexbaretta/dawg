@@ -545,9 +545,8 @@ let learn conf =
     folds_and_weights conf sampler feature_map n_rows a_y_feature
   in
 
-  let feature_map, num_excluded_features =
-    let num_excluded = ref 0 in
-
+  let num_all_features = Feat_map.length feature_map in
+  let feature_map =
     (* remove not-selected features, if any *)
     let feature_map =
       match conf.selected_feature_name_regexp_opt with
@@ -556,11 +555,7 @@ let learn conf =
           let is_selected feature =
             match Feat_utils.name_of_feature feature with
             | None -> false (* anonymous features cannot be excluded *)
-            | Some name ->
-              let is_ex = Pcre.pmatch ~rex name in
-              if is_ex then
-                incr num_excluded;
-              is_ex
+            | Some name -> Pcre.pmatch ~rex name
           in
           let is_included _ feature =
             is_selected feature
@@ -576,19 +571,16 @@ let learn conf =
           let is_excluded feature =
             match Feat_utils.name_of_feature feature with
             | None -> false (* anonymous features cannot be excluded *)
-            | Some name ->
-              let is_ex = Pcre.pmatch ~rex name in
-              if is_ex then
-                incr num_excluded;
-              is_ex
+            | Some name -> Pcre.pmatch ~rex name
           in
           let is_included _ feature =
             not (is_excluded feature)
           in
           Feat_map.filter feature_map is_included
     in
-    feature_map, !num_excluded
+    feature_map
   in
+  let num_features = Feat_map.length feature_map in
 
   let exclude_set = Array.init n_rows (fun i -> folds.(i) < 0) in
   let excluded_observations =
@@ -610,8 +602,8 @@ let learn conf =
       | None -> true
   );
 
-  Utils.pr "features: included=%d excluded=%d\n%!"
-    (Feat_map.length feature_map) num_excluded_features;
+  Utils.pr "features: all=%d included=%d excluded=%d\n%!"
+    num_all_features num_features (num_all_features - num_features);
 
   let minimize = match conf.best_split_algo with
     | `Fibonacci -> Fibsearch.minimize
