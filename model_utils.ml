@@ -227,6 +227,7 @@ let square_rle_to_array re_model =
 let rle_to_array = function
   | `Logistic bi_model -> `Logistic (logistic_rle_to_array bi_model)
   | `Square re_model -> `Square (square_rle_to_array re_model)
+  | `Custom re_model -> `Custom (square_rle_to_array re_model)
 
 let rec tree_extract_stats accu stats (tree : ('a, 'b) Model_t.tree) =
   match tree with

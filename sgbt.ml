@@ -4,7 +4,7 @@ module IntSet = Utils.IntSet
 
 let random_seed = [| 9271 ; 12074; 3; 12921; 92; 763 |]
 
-type loss_type = [ `Logistic | `Square ]
+type loss_type = [ `Logistic | `Square | `Custom ]
 
 type feature_monotonicity = (Feat_utils.feature_descr * Dog_t.monotonicity) list
 type conf = {
@@ -163,8 +163,12 @@ let rec learn_with_fold_rate conf t iteration =
       converge iteration
 
     | Some tree ->
-      let tree = Tree.scale_optimally tree in_subset in
-      let shrunken_tree = Tree.shrink iteration.learning_rate tree in
+      let shrunken_tree = match conf.loss_type with
+        | `Custom -> tree
+        | _ ->
+          let tree = Tree.scale_optimally tree in_subset in
+          Tree.shrink iteration.learning_rate tree
+      in
       let gamma = t.eval (Feat_map.a_find_by_id t.feature_map) shrunken_tree in
 
       match t.splitter#boost gamma with
@@ -178,21 +182,35 @@ let rec learn_with_fold_rate conf t iteration =
             t.splitter#metrics ~in_set ~out_set in
 
           (* compute convergence rate and smooth it *)
-          let convergence_rate =
-            (iteration.prev_loss -. val_loss) /. val_loss in
-          let convergence_rate_smoother = Rls1.add
-              iteration.convergence_rate_smoother convergence_rate in
-          let convergence_rate_hat = Rls1.theta convergence_rate_smoother in
+          let loss_improvement = iteration.prev_loss -. val_loss in
+          let convergence_rate = loss_improvement /. abs_float val_loss in
+          let convergence_rate_smoother, convergence_rate_hat, use_smoother =
+            if conf.convergence_rate_smoother_forgetful_factor > 0.0 then
+              let convergence_rate_smoother =
+                Rls1.add iteration.convergence_rate_smoother convergence_rate
+              in
+              let convergence_rate_hat = Rls1.theta convergence_rate_smoother in
+              convergence_rate_smoother, convergence_rate_hat, true
+            else
+              iteration.convergence_rate_smoother, convergence_rate, false
+          in
           let now = Unix.gettimeofday () in
-          Utils.pr "%6.0fs %6.2fs iter % 3d % 7d  %s %s    %+.4e %+.4e\n%!"
+          Utils.pr "%6.0fs %6.2fs iter % 3d % 7d  %s %s   (%5.2f - %5.2f = %5.2f) %+.4e %+.4e (smooth=%b)\n%!"
             (now -. iteration.fold_start_time)
             (now -. iteration.tree_start_time)
             iteration.fold_id
             iteration.i
             s_wrk
             s_val
+
+            iteration.prev_loss
+            val_loss
+            loss_improvement
+
             convergence_rate
-            convergence_rate_hat;
+            convergence_rate_hat
+            use_smoother
+          ;
 
           let selected_features =
             IntSet.union iteration.selected_features (Tree.extract_features tree)
@@ -252,17 +270,18 @@ let rec learn_with_fold_rate conf t iteration =
                   Utils.pr "converged: metrics indicate continuing is pointless\n";
                   converge (next_iteration ())
                 )
-                else if val_loss >= 2.0 *. iteration.prev_loss then (
-                  Utils.pr "diverged: loss rose dramatically!\n";
-                  cut_learning_rate conf t iteration
-                )
-                else if convergence_rate_hat < conf.min_convergence_rate then (
+                else if convergence_rate_hat <= conf.min_convergence_rate then (
                   (* convergence! *)
                   Utils.pr "converged: rate exceeded\n";
                   if val_loss >= iteration.prev_loss then
                     converge iteration
                   else
                     converge (next_iteration ())
+                )
+                else if val_loss -. iteration.prev_loss >= 2.0 *. abs_float iteration.prev_loss then (
+                  (* cut_learning_rate conf t iteration *)
+                  Utils.pr "diverged: loss rose dramatically!\n";
+                  converge iteration
                 )
                 else continue_learning ()
 
@@ -619,6 +638,15 @@ let learn conf =
           ~max_gamma_opt:conf.max_gamma_opt
           ~weights
           ~y_feature
+          ~n_rows
+          ~num_observations
+          ~min_observations_per_node:conf.min_observations_per_node
+
+      | `Custom ->
+        new Custom_loss.splitter
+          ~minimize
+          ~weights
+          ~y_features:a_y_features
           ~n_rows
           ~num_observations
           ~min_observations_per_node:conf.min_observations_per_node

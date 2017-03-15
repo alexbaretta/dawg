@@ -1,5 +1,7 @@
 open Dog_t
 
+module List = Utils.List
+
 let pr = Printf.printf
 let epr = Printf.eprintf
 
@@ -357,13 +359,14 @@ let repr_array_of_ord_feature n_obs y_feature =
   y
 
 let repr_table_of_ord_features n_obs y_features =
-  let m = Array.length y_features in
+  let m = List.length y_features in
   let ys = Array.init n_obs (fun _ -> Array.make m nan) in
   (* ys is a column-major matrix: we want every row to be contiguous in memory *)
 
-  Array.iteri (fun col feature ->
+  List.iteri (fun col feature ->
     iter_ord_feature (fun row value ->
-      ys.(col).(row) <- value
+      (* Utils.epr "col=%d/%d row=%d/%d\n%!" col (Array.length ys) row (Array.length ys.(0)); *)
+      ys.(row).(col) <- value
     ) feature
   ) y_features;
   ys

@@ -239,6 +239,7 @@ let c_eval_function features trees scale_factor mean_model model kind
       | `Logistic _ ->
         (* need math.exp *)
         `Line "#include <math.h>"
+      | `Custom
       | `Square ->
         `Inline []
   in
@@ -258,6 +259,7 @@ let c_eval_function features trees scale_factor mean_model model kind
         in
         `Inline lines
 
+      | `Custom
       | `Square ->
         `Inline [return_stmt] (* noop *)
   in
@@ -320,6 +322,7 @@ let gen input_file_path output_file_path_opt function_name
     match model with
       | `Logistic { bi_folds; bi_features } ->
         bi_folds, bi_features
+      | `Custom { re_folds; re_features }
       | `Square { re_folds; re_features } ->
         re_folds, re_features
   in
@@ -354,7 +357,7 @@ let gen input_file_path output_file_path_opt function_name
             | None, _ ->
               `Logistic false
         )
-      | `Square _ ->
+      | `Square _ -> (
         match positive_category_opt with
           | Some _ ->
             Printf.eprintf
@@ -364,6 +367,18 @@ let gen input_file_path output_file_path_opt function_name
               input_file_path;
             `Square
           | None -> `Square
+      )
+      | `Custom _ -> (
+        match positive_category_opt with
+          | Some _ ->
+            Printf.eprintf
+              "[WARNING] file %S contains a custom model, not a \
+                logistic model as implied by the positive \
+                category argument\n%!"
+              input_file_path;
+            `Custom
+          | None -> `Custom
+      )
   in
   let code = c_eval_function features trees scale_factor mean_model model kind
     ~input_file_path ~model_md5 ~function_name ~modifiers

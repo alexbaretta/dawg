@@ -268,4 +268,6 @@ module Array = struct
       accu
     ) a 0.0
 
+  let fill_all a x = fill a 0 (Array.length a) x
+
 end

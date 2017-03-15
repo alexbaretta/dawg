@@ -88,6 +88,7 @@ type ('a, 'b) regression_model = {
 type ('a, 'b) model = [
   | Logistic of  ('a, 'b) logistic_model
   | Square of  ('a, 'b) regression_model
+  | Custom of ('a, 'b) regression_model
 ]
 
 (* this representation is used in the process of learning *)

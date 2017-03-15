@@ -344,6 +344,14 @@ let model_eval
         epr "[WARNING] file %S contains a regression model, not a logistic model as \
             implied by the positive category argument\n%!" model_file_path;
         noop, square.re_folds, square.re_features
+
+      | None, `Custom custom ->
+        noop, custom.re_folds, custom.re_features
+
+      | Some _, `Custom custom ->
+        epr "[WARNING] file %S contains a custom model, not a logistic model as \
+            implied by the positive category argument\n%!" model_file_path;
+        noop, custom.re_folds, custom.re_features
   in
   let num_folds = List.length folds in
 

@@ -190,6 +190,9 @@ let main model_file_path =
       | `Square square ->
         printf "kind: square\n%!";
         square.re_folds, square.re_features
+      | `Custom custom ->
+        printf "kind: custom\n%!";
+        custom.re_folds, custom.re_features
   in
   List.(printf "num trees: %d\nnum trees: %d\nnum features: %d\n%!"
           (length folds)

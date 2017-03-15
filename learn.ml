@@ -134,7 +134,7 @@ let learn
     | _ -> ()
   );
 
-  if convergence_rate_smoother_forgetful_factor <= 0.0 ||     (* forget everything *)
+  if convergence_rate_smoother_forgetful_factor < 0.0 ||     (* forget everything *)
      convergence_rate_smoother_forgetful_factor >= 1.0 then ( (* forget nothing *)
     epr "[ERROR] forgetful-factor must be between 0 and 1, exclusive\n%!";
     exit 1
@@ -217,6 +217,7 @@ let learn
     match loss_type_s with
       | "logistic"-> `Logistic
       | "square" -> `Square
+      | "custom" -> `Custom
       | _ ->
         epr "[ERROR] bad loss type %S\n%!" loss_type_s;
         exit 1

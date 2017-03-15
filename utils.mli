@@ -74,4 +74,5 @@ module Array : sig
   val foldi_right : (int -> 'a -> 'b -> 'b) -> 'a array -> 'b -> 'b
   val float_cumsum_left : float array -> float array -> float
   val float_cumsum_right : float array -> float array -> float
+  val fill_all : 'a array -> 'a -> unit
 end

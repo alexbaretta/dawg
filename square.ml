@@ -1,5 +1,7 @@
 open Proto_t
 
+module Array = Utils.Array
+
 let pr = Utils.pr
 let epr = Utils.epr
 
@@ -73,27 +75,6 @@ class splitter
 
   let in_subset = ref [| |] in
 
-  let update_cum () =
-    (* Utils.epr "[DEBUG] update_cum\n%!"; *)
-    cum_z.(0) <- 0.0;
-    cum_l.(0) <- 0.0;
-    cum_n.(0) <- 0.0;
-
-    for i = 1 to n_rows do
-      let i1 = i - 1 in
-      if !in_subset.(i1) then (
-        cum_z.(i) <- z.(i1) +. cum_z.(i1);
-        cum_l.(i) <- l.(i1) +. cum_l.(i1);
-        cum_n.(i) <- weights.(i1) +. cum_n.(i1)
-      )
-      else (
-        cum_z.(i) <- cum_z.(i1);
-        cum_l.(i) <- cum_l.(i1);
-        cum_n.(i) <- cum_n.(i1)
-      )
-    done
-  in
-
   let agg_of_vector cardinality vector =
     let in_subset_ = !in_subset in
     match vector with
@@ -126,18 +107,12 @@ class splitter
     method num_observations : int = num_observations
 
     method clear =
-      for i = 0 to n_rows - 1 do
-        z.(i) <- 0.0;
-        l.(i) <- 0.0;
-        f.(i) <- 0.0;
-        cum_z.(i) <- 0.0;
-        cum_l.(i) <- 0.0;
-        cum_n.(i) <- 0.0;
-      done;
-      (* cum's have one more element *)
-      cum_z.(n_rows) <- 0.0;
-      cum_l.(n_rows) <- 0.0;
-      cum_n.(n_rows) <- 0.0;
+      Array.fill_all z 0.0;
+      Array.fill_all l 0.0;
+      Array.fill_all f 0.0;
+      Array.fill_all cum_z 0.0;
+      Array.fill_all cum_l 0.0;
+      Array.fill_all cum_n 0.0;
       in_subset := [| |]
 
     (* update [f] and [zwl] based on [gamma] *)
@@ -167,8 +142,24 @@ class splitter
         | None -> `Ok
 
     method update_with_subset in_subset_ =
+      (* Utils.epr "[DEBUG] update_with_subset\n%!"; *)
       in_subset := in_subset_;
-      update_cum ()
+      cum_z.(0) <- 0.0;
+      cum_l.(0) <- 0.0;
+      cum_n.(0) <- 0.0;
+      for i = 1 to n_rows do
+        let i1 = i - 1 in
+        if in_subset_.(i1) then (
+          cum_z.(i) <- z.(i1) +. cum_z.(i1);
+          cum_l.(i) <- l.(i1) +. cum_l.(i1);
+          cum_n.(i) <- weights.(i1) +. cum_n.(i1)
+        )
+        else (
+          cum_z.(i) <- cum_z.(i1);
+          cum_l.(i) <- cum_l.(i1);
+          cum_n.(i) <- cum_n.(i1)
+        )
+      done
 
     method best_split
              (monotonicity : Dog_t.monotonicity)
@@ -363,27 +354,6 @@ class splitter
           in !best_split
 
         | `Ord ->
-
-          (* initialize the cumulative sums in each direction *)
-          (* left_sum_n.(0) <- agg_sum_n.(0); *)
-          (* left_sum_z.(0) <- agg_sum_z.(0); *)
-          (* left_sum_l.(0) <- agg_sum_l.(0); *)
-
-          (* right_sum_n.(last) <- agg_sum_n.(last); *)
-          (* right_sum_z.(last) <- agg_sum_z.(last); *)
-          (* right_sum_l.(last) <- agg_sum_l.(last); *)
-
-          (* (\* compute the cumulative sums *\) *)
-          (* for lk = 1 to last do *)
-          (*   left_sum_n.(lk) <- left_sum_n.(lk-1) +. agg_sum_n.(lk); *)
-          (*   left_sum_z.(lk) <- left_sum_z.(lk-1) +. agg_sum_z.(lk); *)
-          (*   left_sum_l.(lk) <- left_sum_l.(lk-1) +. agg_sum_l.(lk); *)
-
-          (*   let rk = cardinality - lk - 1 in *)
-          (*   right_sum_n.(rk) <- right_sum_n.(rk+1) +. agg_sum_n.(rk); *)
-          (*   right_sum_z.(rk) <- right_sum_z.(rk+1) +. agg_sum_z.(rk); *)
-          (*   right_sum_l.(rk) <- right_sum_l.(rk+1) +. agg_sum_l.(rk); *)
-          (* done; *)
 
           let _ : float = Utils.Array.float_cumsum_left agg_sum_n left_sum_n in
           let _ : float = Utils.Array.float_cumsum_left agg_sum_z left_sum_z in
