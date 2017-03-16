@@ -635,6 +635,10 @@ let mixed_type_feature_exn mt_feature_id mt_feature_name i_values =
   raise (MixedTypeFeature mt)
 
 let write_feature j i_values n dog feature_id_to_name config =
+  let name_for_log = match feature_id_to_name j with
+    | Some x -> x
+    | None -> "<nameless>"
+  in
   let hist = Hashtbl.create (n / 100) in
   let kind_count = List.fold_left (
       fun kind_count (i, value) ->
@@ -651,10 +655,10 @@ let write_feature j i_values n dog feature_id_to_name config =
           feature_id_to_name config in
       match cf with
         | `Uniform ->
-          Printf.printf "%d: cat uniform\n%!" j
+          Printf.printf "%d (%s): cat uniform\n%!" j name_for_log
 
         | `NonUniform cat ->
-          Printf.printf "%d: cat\n%!" j;
+          Printf.printf "%d (%s): cat\n%!" j name_for_log;
           Dog_io.WO.add_feature dog cat
     else
       let feature_name = feature_id_to_name j in
@@ -668,16 +672,16 @@ let write_feature j i_values n dog feature_id_to_name config =
     in
     match float_or_int_feat with
       | `Uniform ->
-        Printf.printf "%d: numeric uniform\n%!" j
+        Printf.printf "%d (%s): numeric uniform\n%!" j name_for_log
 
       | `NonUniform feat -> (
           match feat with
             | `Ord ord ->
               (match ord.o_breakpoints with
                 | `Float _ ->
-                  Printf.printf "%d: float\n%!" j;
+                  Printf.printf "%d (%s): float\n%!" j name_for_log;
                 | `Int _ ->
-                  Printf.printf "%d: int\n%!" j
+                  Printf.printf "%d (%s): int\n%!" j name_for_log
               );
               Dog_io.WO.add_feature dog feat
 
@@ -685,7 +689,7 @@ let write_feature j i_values n dog feature_id_to_name config =
         )
 
   else (
-    Printf.printf "%d: implicit uniform\n%!" j
+    Printf.printf "%d (%s): implicit uniform\n%!" j name_for_log
   )
 
 
