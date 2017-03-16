@@ -217,7 +217,8 @@ let learn
     match loss_type_s with
       | "logistic"-> `Logistic
       | "square" -> `Square
-      | "custom" -> `Custom
+      | "custom" | "custom-loss" -> `Custom `Minimize
+      | "custom-gain" -> `Custom `Maximize
       | _ ->
         epr "[ERROR] bad loss type %S\n%!" loss_type_s;
         exit 1

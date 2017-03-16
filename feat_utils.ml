@@ -281,6 +281,9 @@ let descr_of_feature feature =
         | Some name -> `Name name
         | None -> `Id id
 
+let string_descr_of_feature feature =
+  string_of_feature_descr (descr_of_feature feature)
+
 let descr_of_ord_feature feature =
   match feature with
     | { o_feature_name_opt = name_opt; o_feature_id = id } ->
@@ -358,7 +361,7 @@ let repr_array_of_ord_feature n_obs y_feature =
   );
   y
 
-let repr_table_of_ord_features n_obs y_features =
+let repr_table_of_ord_features ~scale n_obs y_features =
   let m = List.length y_features in
   let ys = Array.init n_obs (fun _ -> Array.make m nan) in
   (* ys is a column-major matrix: we want every row to be contiguous in memory *)
@@ -366,7 +369,7 @@ let repr_table_of_ord_features n_obs y_features =
   List.iteri (fun col feature ->
     iter_ord_feature (fun row value ->
       (* Utils.epr "col=%d/%d row=%d/%d\n%!" col (Array.length ys) row (Array.length ys.(0)); *)
-      ys.(row).(col) <- value
+      ys.(row).(col) <- scale *. value
     ) feature
   ) y_features;
   ys

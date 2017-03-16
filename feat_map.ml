@@ -86,19 +86,21 @@ let length t =
   Utils.IntMap.fold (fun _ _ c -> c + 1) t.id_to_feature 0
 
 let i_find_by_name t feature_name =
-  Utils.IntMap.fold (
+  let found = Utils.IntMap.fold (
     fun _ feature accu ->
       match feature with
         | `Ord { o_feature_name_opt = opt }
         | `Cat { c_feature_name_opt = opt } ->
           match opt with
             | Some name ->
-              if name = feature_name then
+              if Pcre.pmatch ~pat:feature_name name then
                 feature :: accu
               else
                 accu
             | None -> accu
   ) t.id_to_feature []
+  in
+  List.rev found
 
 let find t = function
   | `Name name -> i_find_by_name t name

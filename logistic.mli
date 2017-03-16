@@ -8,7 +8,7 @@ type binarization_threshold = [
 
 val probability : float -> float
 class splitter :
-  minimize:float Fibsearch.minimizer ->
+  optimize:float Fibsearch.minimizer ->
     max_gamma_opt:float option ->
     binarization_threshold_opt:binarization_threshold option ->
     weights:float array ->

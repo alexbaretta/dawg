@@ -63,31 +63,42 @@ let updated_loss ~gamma  ~sum_l ~sum_z ~sum_n =
   assert false
 
 
-let y_repr_table y_features n_rows =
+let y_repr_table optimization y_features n_rows =
   let open Dog_t in
   let ord_features = List.map (function
     | `Ord ord_feature -> ord_feature
     | `Cat cat -> raise (Loss.WrongTargetType (Feat_utils.descr_of_cat_feature cat))
   ) y_features
   in
-  Feat_utils.repr_table_of_ord_features n_rows ord_features
+  let scale = match optimization with
+    | `Minimize -> 1.0
+    | `Maximize -> -1.0
+  in
+  Feat_utils.repr_table_of_ord_features ~scale n_rows ord_features
 
 exception EmptyFold of string
 
 class splitter
-  ~minimize
+  ~optimization
+  ~optimize
   ~weights
   ~y_features
   ~n_rows
   ~num_observations
   ~min_observations_per_node
   =
-  let ys = y_repr_table y_features n_rows in
+  let ys = y_repr_table optimization y_features n_rows in
 
   (* The decision function can only select from among the
      action values provided in the ys table *)
   let m = List.length y_features in
   let max_f = m - 1 in
+
+  let () = Utils.epr "[INFO] custom model with %d levels\n%!" m in
+  let () = List.iteri (fun i feature ->
+    let descr = Feat_utils.string_descr_of_feature feature in
+    Utils.epr "[INFO] level % 3d: %s\n%!" i descr
+  ) y_features in
 
   (* current index into the loss row vector *)
   let f = Array.make n_rows 0 in
@@ -185,9 +196,9 @@ class splitter
             let zplus_i = loss_plus_i -. loss_i in (* right pseudo response for the i-th row *)
             let zminus_i = loss_minus_i -. loss_i in (* left pseudo response for the i-th row *)
             savings := !savings +. loss.(i) -. loss_i;
-            (* if gamma_i <> 0 then *)
-            (*   Utils.epr "[DEBUG] i=%d gamma=%.2f->%d f=%d->%d loss=%.2f->%.2f savings=%.2f\n%!" *)
-            (*     i gamma_if gamma_i f.(i) f_i loss.(i) loss_i !savings; *)
+            if i mod 10_000 = 0 && gamma_i <> 0 then
+              Utils.epr "[DEBUG] i=%d gamma=%.2f->%d f=%d->%d loss=%.2f->%.2f savings=%.2f\n%!"
+                i gamma_if gamma_i f.(i) f_i loss.(i) loss_i !savings;
             f.(i) <- f_i;
             zplus.(i) <- zplus_i;
             zminus.(i) <- zminus_i;
@@ -431,7 +442,7 @@ class splitter
 
           (* find and keep optimal split -- the one associated with the minimum loss *)
           (* for k = 0 to cardinality-2 do *)
-          let _ = minimize 0 (cardinality - 2) (fun k ->
+          let _ = optimize 0 (cardinality - 2) (fun k ->
             let left_n  = left_sum_n.(k)    in
             let right_n = right_sum_n.(k+1) in
 
@@ -463,6 +474,8 @@ class splitter
               in
 
               let total_loss = left_loss +. left_z +. right_loss +. right_z in
+              Utils.epr "[DEBUG] searching: id=%d k=%d/%d total_loss=%f left_zplus=%f left_zminus=%f left_z=%f right_zplus=%f right_zminus=%f right_z=%f\n%!"
+                feature_id k cardinality total_loss left_zplus left_zminus left_z right_zplus right_zminus right_z;
               if right_gamma = 0 && left_gamma = 0 then
                 total_loss
               else
@@ -495,8 +508,8 @@ class splitter
                     os_right = right ;
                   }
                   in
-                  (* Utils.epr "[DEBUG] best split id=%d k=%d/%d total_loss=%f left_zplus=%f left_zminus=%f left_z=%f right_zplus=%f right_zminus=%f right_z=%f\n%!" *)
-                  (*   feature_id k cardinality total_loss left_zplus left_zminus left_z right_zplus right_zminus right_z; *)
+                  Utils.epr "[DEBUG] best split id=%d k=%d/%d total_loss=%f left_zplus=%f left_zminus=%f left_z=%f right_zplus=%f right_zminus=%f right_z=%f\n%!"
+                    feature_id k cardinality total_loss left_zplus left_zminus left_z right_zplus right_zminus right_z;
                   best_split := Some (total_loss, curr_split)
                 );
                 total_loss

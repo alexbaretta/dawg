@@ -30,6 +30,7 @@ type feature_descr = [ `Name of string | `Id of int ]
 val string_of_feature_descr : feature_descr -> string
 val feature_descr_of_string : string -> feature_descr option
 val descr_of_feature : ('a, 'b) feature -> feature_descr
+val string_descr_of_feature : ('a, 'b) feature -> string
 val descr_of_cat_feature : ('a, 'b) cat_feature -> feature_descr
 val descr_of_ord_feature : ('a, 'b) ord_feature -> feature_descr
 
@@ -37,4 +38,5 @@ val iter_ord_feature : (int -> float -> unit) -> (Vec.t, Vec.t) Dog_t.ord_featur
 val repr_array_of_ord_feature : int -> (Vec.t, Vec.t) Dog_t.ord_feature -> float array
 
 (* ys is a column-major matrix: we want every row to be contiguous in memory *)
-val repr_table_of_ord_features: int -> (Vec.t, Vec.t) Dog_t.ord_feature list -> float array array
+val repr_table_of_ord_features:
+  scale:float -> int -> (Vec.t, Vec.t) Dog_t.ord_feature list -> float array array

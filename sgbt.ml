@@ -4,7 +4,8 @@ module IntSet = Utils.IntSet
 
 let random_seed = [| 9271 ; 12074; 3; 12921; 92; 763 |]
 
-type loss_type = [ `Logistic | `Square | `Custom ]
+type optimization = [ `Minimize | `Maximize ]
+type loss_type = [ `Logistic | `Square | `Custom of optimization ]
 
 type feature_monotonicity = (Feat_utils.feature_descr * Dog_t.monotonicity) list
 type conf = {
@@ -164,7 +165,7 @@ let rec learn_with_fold_rate conf t iteration =
 
     | Some tree ->
       let shrunken_tree = match conf.loss_type with
-        | `Custom -> tree
+        | `Custom _ -> tree
         | _ ->
           let tree = Tree.scale_optimally tree in_subset in
           Tree.shrink iteration.learning_rate tree
@@ -595,7 +596,7 @@ let learn conf =
   Utils.pr "features: all=%d included=%d excluded=%d\n%!"
     num_all_features num_features (num_all_features - num_features);
 
-  let minimize = match conf.best_split_algo with
+  let optimize = match conf.best_split_algo with
     | `Fibonacci -> Fibsearch.minimize
     | `Exhaustive -> Fibsearch.minimize_exhaustive
   in
@@ -614,7 +615,7 @@ let learn conf =
             exit 1
         in
         new Logistic.splitter
-          ~minimize
+          ~optimize
           ~max_gamma_opt:conf.max_gamma_opt
           ~binarization_threshold_opt:conf.binarization_threshold_opt
           ~weights
@@ -634,7 +635,7 @@ let learn conf =
             exit 1
         in
         new Square.splitter
-          ~minimize
+          ~optimize
           ~max_gamma_opt:conf.max_gamma_opt
           ~weights
           ~y_feature
@@ -642,9 +643,10 @@ let learn conf =
           ~num_observations
           ~min_observations_per_node:conf.min_observations_per_node
 
-      | `Custom ->
+      | `Custom optimization ->
         new Custom_loss.splitter
-          ~minimize
+          ~optimization
+          ~optimize
           ~weights
           ~y_features:a_y_features
           ~n_rows

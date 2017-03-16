@@ -442,7 +442,7 @@ let updated_loss ~gamma  ~sum_l ~sum_z ~sum_w =
 exception EmptyFold
 
 class splitter
-  ~minimize
+  ~optimize
   ~max_gamma_opt
   ~binarization_threshold_opt
   ~weights
@@ -676,7 +676,7 @@ class splitter
           (* find and keep optimal split -- the one associated with the
              minimum loss *)
           (* for s = 0 to cardinality-2 do *)
-          let _ = minimize 0 (cardinality - 2) (fun s ->
+          let _ = optimize 0 (cardinality - 2) (fun s ->
             let k   = s_to_k.(s)   in
             let k_1 = s_to_k.(s+1) in
 
@@ -786,7 +786,7 @@ class splitter
 
           (* find and keep optimal split -- the one associated with the minimum loss *)
           (* for k = 0 to cardinality-2 do *)
-          let _ = minimize 0 (cardinality - 2) (fun k ->
+          let _ = optimize 0 (cardinality - 2) (fun k ->
             let left_n  = left.sum_n.(k)    in
             let right_n = right.sum_n.(k+1) in
 
