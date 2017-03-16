@@ -228,6 +228,11 @@ module List = struct
     else
       first [] n list
 
+  let rec dedup_sorted l = match l with
+    | x1 :: (x2 :: _) as tl when x1 = x2 -> dedup_sorted tl
+    | x1 :: tl -> x1 :: dedup_sorted tl
+    | [] -> []
+
 end
 
 
@@ -245,7 +250,7 @@ module Array = struct
     foldi_left_from f 0 init a
 
   let rec foldi_right_from f i a init =
-    if i > 0 then
+    if i >= 0 then
       let next = f i a.(i) init in
       foldi_right_from f (pred i) a next
     else
