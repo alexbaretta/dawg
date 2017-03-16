@@ -93,7 +93,8 @@ let i_find_by_name t feature_name =
         | `Cat { c_feature_name_opt = opt } ->
           match opt with
             | Some name ->
-              if Pcre.pmatch ~pat:feature_name name then
+              let pat = feature_name ^ "$" in
+              if Pcre.pmatch ~pat name then
                 feature :: accu
               else
                 accu
