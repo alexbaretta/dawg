@@ -245,7 +245,7 @@ module Array = struct
     foldi_left_from f 0 init a
 
   let rec foldi_right_from f i a init =
-    if i > 0 then
+    if i >= 0 then
       let next = f i a.(i) init in
       foldi_right_from f (pred i) a next
     else
