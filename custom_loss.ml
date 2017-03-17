@@ -196,9 +196,9 @@ class splitter
             let zplus_i = loss_plus_i -. loss_i in (* right pseudo response for the i-th row *)
             let zminus_i = loss_minus_i -. loss_i in (* left pseudo response for the i-th row *)
             savings := !savings +. loss.(i) -. loss_i;
-            if i mod 10_000 = 0 && gamma_i <> 0 then
-              Utils.epr "[DEBUG] i=%d gamma=%.2f->%d f=%d->%d loss=%.2f->%.2f savings=%.2f\n%!"
-                i gamma_if gamma_i f.(i) f_i loss.(i) loss_i !savings;
+            (* if i mod 10_000 = 0 && gamma_i <> 0 then *)
+            (*   Utils.epr "[DEBUG] i=%d gamma=%.2f->%d f=%d->%d loss=%.2f->%.2f savings=%.2f\n%!" *)
+            (*     i gamma_if gamma_i f.(i) f_i loss.(i) loss_i !savings; *)
             f.(i) <- f_i;
             zplus.(i) <- zplus_i;
             zminus.(i) <- zminus_i;
@@ -474,8 +474,8 @@ class splitter
               in
 
               let total_loss = left_loss +. left_z +. right_loss +. right_z in
-              Utils.epr "[DEBUG] searching: id=%d k=%d/%d total_loss=%f left_zplus=%f left_zminus=%f left_z=%f right_zplus=%f right_zminus=%f right_z=%f\n%!"
-                feature_id k cardinality total_loss left_zplus left_zminus left_z right_zplus right_zminus right_z;
+              (* Utils.epr "[DEBUG] searching: id=%d k=%d/%d total_loss=%f left_zplus=%f left_zminus=%f left_z=%f right_zplus=%f right_zminus=%f right_z=%f\n%!" *)
+              (*   feature_id k cardinality total_loss left_zplus left_zminus left_z right_zplus right_zminus right_z; *)
               if right_gamma = 0 && left_gamma = 0 then
                 total_loss
               else
@@ -508,8 +508,8 @@ class splitter
                     os_right = right ;
                   }
                   in
-                  Utils.epr "[DEBUG] best split id=%d k=%d/%d total_loss=%f left_zplus=%f left_zminus=%f left_z=%f right_zplus=%f right_zminus=%f right_z=%f\n%!"
-                    feature_id k cardinality total_loss left_zplus left_zminus left_z right_zplus right_zminus right_z;
+                  (* Utils.epr "[DEBUG] best split id=%d k=%d/%d total_loss=%f left_zplus=%f left_zminus=%f left_z=%f right_zplus=%f right_zminus=%f right_z=%f\n%!" *)
+                  (*   feature_id k cardinality total_loss left_zplus left_zminus left_z right_zplus right_zminus right_z; *)
                   best_split := Some (total_loss, curr_split)
                 );
                 total_loss
@@ -545,12 +545,12 @@ class splitter
       done;
 
       if !wrk_nn > 0.0 && !val_nn > 0.0 then
-        let wrk_loss = !wrk_loss in
+        let wrk_loss = !wrk_loss /. !wrk_nn in
 
-        let val_loss = !val_loss in
+        let val_loss = !val_loss /. !val_nn in
 
         let s_wrk = Printf.sprintf "% 8.2f %.4e" !wrk_nn wrk_loss in
-        let s_val = Printf.sprintf "% 8.2f %.4e (%.2f)" !val_nn val_loss (val_loss +. wrk_loss) in
+        let s_val = Printf.sprintf "% 8.2f %.4e" !val_nn val_loss in
 
         Loss.( { s_wrk; s_val; has_converged = false; val_loss; } )
 
@@ -565,7 +565,7 @@ class splitter
       ) ys;
       let gamma0, _loss = Fibsearch.minimize 0 max_f (Array.get sum_ys) in
       let gamma = float gamma0 in
-      (* Utils.epr "[DEBUG mean_model] gamma=%d->%.2f\n%!" gamma0 gamma; *)
+      Utils.epr "[DEBUG mean_model] gamma=%d->%.2f\n%!" gamma0 gamma;
       gamma
 
     method write_model re_folds re_features out_buf =

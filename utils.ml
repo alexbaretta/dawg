@@ -77,6 +77,10 @@ let f_and_not b1 b2 =
     | true , false -> true
     | false, true  -> false
 
+let default d = function
+  | Some x -> x
+  | None -> d
+
 module type XSetS = sig
   include Set.S
   val to_list : t -> elt list

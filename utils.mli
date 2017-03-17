@@ -17,6 +17,8 @@ val f_xor : bool -> bool -> bool
 
 val f_and_not : bool -> bool -> bool
 
+val default : 'a -> 'a option -> 'a
+
 module type XSetS = sig
   include Set.S
   val to_list : t -> elt list

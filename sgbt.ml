@@ -196,21 +196,21 @@ let rec learn_with_fold_rate conf t iteration =
               iteration.convergence_rate_smoother, convergence_rate, false
           in
           let now = Unix.gettimeofday () in
-          Utils.pr "%6.0fs %6.2fs iter % 3d % 7d  %s %s   (%5.2f - %5.2f = %5.2f) %+.4e %+.4e (smooth=%b)\n%!"
+          (* Utils.pr "%6.0fs %6.2fs iter % 3d % 7d  %s %s   (%5.2f - %5.2f = %5.2f) %+.4e %+.4e (smooth=%b)\n%!" *)
+          Utils.pr "%6.0fs %6.2fs iter % 3d % 7d  %s %s\n%!"
             (now -. iteration.fold_start_time)
             (now -. iteration.tree_start_time)
             iteration.fold_id
             iteration.i
             s_wrk
             s_val
+            (* iteration.prev_loss *)
+            (* val_loss *)
+            (* loss_improvement *)
 
-            iteration.prev_loss
-            val_loss
-            loss_improvement
-
-            convergence_rate
-            convergence_rate_hat
-            use_smoother
+            (* convergence_rate *)
+            (* convergence_rate_hat *)
+            (* use_smoother *)
           ;
 
           let selected_features =

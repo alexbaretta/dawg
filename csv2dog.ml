@@ -157,8 +157,12 @@ let dummy_cell = {
 *)
 
 let write_cells_to_work_dir work_dir header next_row config =
-  let num_features = List.length header in
+  (* let num_features = List.length header in *)
 
+  let header_length_opt = match header with
+    | [] -> None
+    | l -> Some (List.length l)
+  in
   let cells = Array.make config.max_cells_in_mem dummy_cell in
 
   let append_cell ~c ~f (cell : csv_cell) =
@@ -243,8 +247,7 @@ let write_cells_to_work_dir work_dir header next_row config =
         exit 1
 
   in
-  Printf.printf "num features: %d\n%!" num_features;
-  loop ~cell_row:0 ~f:0 ~c:0 None
+  loop ~cell_row:0 ~f:0 ~c:0 header_length_opt
 
 let csv_to_cells work_dir config =
   let { input_path_opt; no_header } = config in
