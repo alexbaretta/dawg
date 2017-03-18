@@ -99,6 +99,7 @@ FILES[] =
   trie
   fibsearch
   custom_loss
+  mcore
 
 # Disable camlp4 for utils.cmi
 # Reason: camlp4 3.12 does not support `module type of <Module>" syntax

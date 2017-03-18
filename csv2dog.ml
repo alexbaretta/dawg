@@ -163,25 +163,31 @@ let write_cells_to_work_dir work_dir header next_row config =
     | [] -> None
     | l -> Some (List.length l)
   in
-  let cells = Array.make config.max_cells_in_mem dummy_cell in
 
-  let append_cell ~c ~f (cell : csv_cell) =
+  let append_cell ~cells ~mcore ~c ~f (cell : csv_cell) =
     if c < config.max_cells_in_mem then (
       cells.( c ) <- cell;
-      c + 1, f
+      cells, mcore, c + 1, f
     )
-    else (
-      Printf.printf "sorting files=%d cells=%d ... %!" f c;
-      Array.sort compare_cells cells;
-      Printf.printf "done\n%!";
-      write_cells_to_file work_dir f cells;
-      Array.fill cells 0 config.max_cells_in_mem dummy_cell;
+    else
+      let success, mcore = Mcore.reap mcore in
+      if not success then (
+        Utils.epr "[ERROR] one sorting task failed\n%!";
+        exit 1
+      );
+      let mcore = Mcore.spawn mcore (fun () ->
+        Printf.printf "[STRT] sorting files=%d cells=%d ... %!" f c;
+        Array.fast_sort compare_cells cells;
+        Printf.printf "[DONE] sorting files=%d cells=%d\n%!" f c;
+        write_cells_to_file work_dir f cells;
+      ) ()
+      in
+      let cells = Array.make config.max_cells_in_mem dummy_cell in
       cells.(0) <- cell;
-      1, f + 1
-    )
+      cells, mcore, 1, f + 1
   in
 
-  let rec loop ~cell_row ~f ~c prev_dense_row_length_opt =
+  let rec loop ~cells ~mcore ~cell_row ~f ~c prev_dense_row_length_opt =
     if cell_row mod 1000 = 0 then
       Printf.printf "files=%d rows=%d\n%!" f cell_row;
 
@@ -192,7 +198,7 @@ let write_cells_to_work_dir work_dir header next_row config =
           let trailing_cells = Array.make c dummy_cell in
           (* copy *)
           Array.blit cells 0 trailing_cells 0 c;
-          Array.sort compare_cells trailing_cells;
+          Array.fast_sort compare_cells trailing_cells;
           write_cells_to_file work_dir f trailing_cells;
           cell_row, f+1
         )
@@ -200,13 +206,14 @@ let write_cells_to_work_dir work_dir header next_row config =
           cell_row, f
 
       | `Ok (`Dense dense) ->
-        let dense_row_length, c, f = List.fold_left (
-            fun (cell_column, c, f) cell_value ->
-              let c, f =
+        let cells, mcore, dense_row_length, c, f = List.fold_left (
+            fun (cells, mcore, cell_column, c, f) cell_value ->
+              let cells, mcore, c, f =
                 let cell = { cell_column; cell_row; cell_value } in
-                append_cell ~c ~f cell in
-              cell_column + 1, c, f
-          ) (0, c, f) dense in
+                append_cell ~cells ~mcore ~c ~f cell
+              in
+              cells, mcore, cell_column + 1, c, f
+          ) (cells, mcore, 0, c, f) dense in
 
         (* check that all dense rows have the same length *)
         let dense_row_length_opt =
@@ -223,15 +230,15 @@ let write_cells_to_work_dir work_dir header next_row config =
               );
               Some dense_row_length
         in
-        loop ~cell_row:(cell_row + 1) ~f ~c dense_row_length_opt
+        loop ~cells ~mcore ~cell_row:(cell_row + 1) ~f ~c dense_row_length_opt
 
       | `Ok (`Sparse sparse) ->
-        let c, f = List.fold_left (
-            fun (c, f) (cell_column, cell_value) ->
+        let cells, mcore, c, f = List.fold_left (
+            fun (cells, mcore, c, f) (cell_column, cell_value) ->
               let cell = { cell_column; cell_row; cell_value } in
-              append_cell ~c ~f cell
-          ) (c, f) sparse in
-        loop ~cell_row:(cell_row+1) ~f ~c prev_dense_row_length_opt
+              append_cell ~cells ~mcore ~c ~f cell
+          ) (cells, mcore, c, f) sparse in
+        loop ~cells ~mcore ~cell_row:(cell_row+1) ~f ~c prev_dense_row_length_opt
 
       | `SyntaxError err ->
         print_endline (Csv_io.string_of_error_location err);
@@ -247,7 +254,15 @@ let write_cells_to_work_dir work_dir header next_row config =
         exit 1
 
   in
-  loop ~cell_row:0 ~f:0 ~c:0 header_length_opt
+  let cells = Array.make config.max_cells_in_mem dummy_cell in
+  let mcore = Mcore.create_mprocess () in
+  let result = loop ~cells ~mcore ~cell_row:0 ~f:0 ~c:0 header_length_opt in
+  let success = Mcore.sync mcore in
+  if not success then (
+    Utils.epr "[ERROR] one sorting task failed\n%!";
+    exit 1
+  );
+  result
 
 let csv_to_cells work_dir config =
   let { input_path_opt; no_header } = config in
@@ -658,10 +673,10 @@ let write_feature j i_values n dog feature_id_to_name config =
           feature_id_to_name config in
       match cf with
         | `Uniform ->
-          Printf.printf "%d (%s): cat uniform\n%!" j name_for_log
+          Printf.printf "%d cat: %s (uniform)\n%!" j name_for_log
 
         | `NonUniform cat ->
-          Printf.printf "%d (%s): cat\n%!" j name_for_log;
+          Printf.printf "%d cat: %s\n%!" j name_for_log;
           Dog_io.WO.add_feature dog cat
     else
       let feature_name = feature_id_to_name j in
@@ -675,16 +690,16 @@ let write_feature j i_values n dog feature_id_to_name config =
     in
     match float_or_int_feat with
       | `Uniform ->
-        Printf.printf "%d (%s): numeric uniform\n%!" j name_for_log
+        Printf.printf "%d num: %s (uniform)\n%!" j name_for_log
 
       | `NonUniform feat -> (
           match feat with
             | `Ord ord ->
               (match ord.o_breakpoints with
                 | `Float _ ->
-                  Printf.printf "%d (%s): float\n%!" j name_for_log;
+                  Printf.printf "%d fp : %s\n%!" j name_for_log;
                 | `Int _ ->
-                  Printf.printf "%d (%s): int\n%!" j name_for_log
+                  Printf.printf "%d int: %s\n%!" j name_for_log
               );
               Dog_io.WO.add_feature dog feat
 
@@ -912,7 +927,8 @@ let commands =
     let max_cells_in_mem =
       let doc = "the maximum number of csv data cells that will be held in memory; \
                  a smaller value will lead to more intermediate files, and overall \
-                 slower processing" in
+                 slower processing: defaults to 10_000_000, requiring about 2GB of \
+                 memory." in
       Arg.(required & opt (some int) (Some Defaults.max_cells_in_mem) &
            info ["m";"max-cells-in-mem"] ~docv:"INT" ~doc)
     in
