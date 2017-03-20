@@ -20,6 +20,7 @@ val remove : t -> int -> t
 val length : t -> int
 
 val iter : t -> (Feat.afeature -> unit) -> unit
+val iteri : t -> (int -> Feat.afeature -> unit) -> unit
 val fold : t -> (Feat.afeature -> 'a -> 'a) -> 'a -> 'a
 val i_to_a : t -> Feat.ifeature -> Feat.afeature
 

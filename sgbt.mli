@@ -28,6 +28,7 @@ type conf = {
   exclude_inf_target : bool;
   stochastic_gradient: bool;
   best_split_algo : [ `Fibonacci | `Exhaustive ];
+  custom_force_mean : int option;
 }
 
 val learn : conf -> unit

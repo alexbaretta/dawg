@@ -34,6 +34,7 @@ type conf = {
   exclude_inf_target : bool;
   stochastic_gradient : bool;
   best_split_algo : [ `Fibonacci | `Exhaustive ];
+  custom_force_mean : int option;
 }
 
 type t = {
@@ -197,7 +198,7 @@ let rec learn_with_fold_rate conf t iteration =
           in
           let now = Unix.gettimeofday () in
           (* Utils.pr "%6.0fs %6.2fs iter % 3d % 7d  %s %s   (%5.2f - %5.2f = %5.2f) %+.4e %+.4e (smooth=%b)\n%!" *)
-          Utils.pr "%6.0fs %6.2fs iter % 3d % 7d  %s %s %+.4e %+.4e\n%!"
+          Utils.pr "%6.0fs %6.2fs iter % 3d % 7d  %s  %s %+.4e %+.4e\n%!"
             (now -. iteration.fold_start_time)
             (now -. iteration.tree_start_time)
             iteration.fold_id
@@ -273,7 +274,7 @@ let rec learn_with_fold_rate conf t iteration =
                 )
                 else if convergence_rate_hat <= conf.min_convergence_rate then (
                   (* convergence! *)
-                  Utils.pr "converged: rate exceeded\n";
+                  Utils.pr "converged: rate exceeded at val_loss = %.4e\n%!" val_loss;
                   if val_loss >= iteration.prev_loss then
                     converge iteration
                   else
@@ -316,14 +317,14 @@ let learn_with_fold conf t fold_id initial_learning_rate deadline =
     Array.init t.n_rows (fun i -> let n = t.folds.(i) in n >= 0 && n = fold_id)
   in
 
-  let mean_model = t.splitter#mean_model in_set in
+  let mean_model = t.splitter#mean_model ~in_set ~out_set in
   reset t mean_model;
 
   let { Loss.s_wrk; s_val; val_loss = first_val_loss } =
     t.splitter#metrics ~in_set ~out_set
   in
 
-  Utils.pr "% 15s fold % 3d          %s %s\n%!" "" fold_id s_wrk s_val;
+  Utils.pr "% 15s fold % 3d          %s  %s\n%!" "" fold_id s_wrk s_val;
 
   let new_random_seed = [| Random.int 10_000 |] in
 
@@ -580,6 +581,14 @@ let learn conf =
   Array.iteri (fun i ex -> if ex then weights.(i) <- 0.0) exclude_set;
   let num_observations = n_rows - excluded_observations in
 
+  let () = Utils.epr "[INFO] %d observations, %d features\n%!"
+    num_observations num_features in
+  let () = Feat_map.iteri feature_map (fun id feature ->
+    let descr = Feat_utils.string_descr_of_feature feature in
+    Utils.epr "[INFO] feature id % 3d: %s\n%!" id descr
+  ) in
+
+
   assert (
     (* make sure fold features (if any) are gone from the
        [feature_map] *)
@@ -652,6 +661,7 @@ let learn conf =
           ~n_rows
           ~num_observations
           ~min_observations_per_node:conf.min_observations_per_node
+          ~force_mean:conf.custom_force_mean
   in
 
   let eval = Tree.mk_eval n_rows in

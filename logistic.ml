@@ -450,6 +450,7 @@ class splitter
   ~n_rows
   ~num_observations
   ~min_observations_per_node
+  : Loss.splitter
   =
   let y, positive_category, negative_category_opt =
     y_array_of_feature binarization_threshold_opt y_feature n_rows in
@@ -941,12 +942,12 @@ class splitter
       else
         raise EmptyFold
 
-    method mean_model set : float =
-      assert (Array.length set = n_rows);
+    method mean_model ~in_set ~out_set : float =
+      assert (Array.length in_set = n_rows);
       let n_true = ref 0.0 in
       let n_false = ref 0.0 in
       for i = 0 to n_rows - 1 do
-        if set.(i) then
+        if in_set.(i) then
           let p = y.(i) in
           let weight_i = weights.(i) in
           Utils.add_to n_true (p *. weight_i);

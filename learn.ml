@@ -100,6 +100,7 @@ let learn
     exclude_inf_target
     stochastic_gradient
     best_split_algo_string
+    custom_force_mean
     ()
   =
 
@@ -335,6 +336,7 @@ let learn
       exclude_inf_target;
       stochastic_gradient;
       best_split_algo;
+      custom_force_mean;
     }
   in
 
@@ -590,6 +592,10 @@ let commands =
                  Default is `exhaustive'." in
       Arg.(value & opt string "exhaustive" & info ["best-split-algo"] ~docv:"[fibonacci|exhaustive]" ~doc)
     in
+    let custom_force_mean =
+      let doc = "Provide a user defined mean model (only for custom loss)" in
+      Arg.(value & opt (some int) None & info ["force-mean"] ~docv:"INT" ~doc)
+    in
 
     Term.(pure learn $
             input_file_path $
@@ -626,6 +632,7 @@ let commands =
             exclude_inf_target $
             stochastic_gradient $
             best_split_algo_string $
+            custom_force_mean $
             const ()
          ),
     Term.info "learn" ~doc

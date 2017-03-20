@@ -2,7 +2,8 @@ open Proto_t
 
 module Array = Utils.Array
 
-external int_of_bool : bool -> int = "%identity";;
+external int_of_bool : bool -> int = "%identity"
+external identity : 'a -> 'a = "%identity"
 
 let pr = Utils.pr
 let epr = Utils.epr
@@ -86,6 +87,7 @@ class splitter
   ~n_rows
   ~num_observations
   ~min_observations_per_node
+  ~force_mean
   =
   let ys = y_repr_table optimization y_features n_rows in
 
@@ -164,6 +166,7 @@ class splitter
   let apply_boost f gamma = max 0 (min max_f (f + gamma)) in
 
   object
+    val mutable mean_model_loss = (nan, nan)
     method num_observations : int = num_observations
 
     method clear =
@@ -539,27 +542,75 @@ class splitter
 
       if !wrk_nn > 0.0 && !val_nn > 0.0 then
         let wrk_loss = !wrk_loss /. !wrk_nn in
-
         let val_loss = !val_loss /. !val_nn in
 
-        let s_wrk = Printf.sprintf "% 8.2f %.4e" !wrk_nn wrk_loss in
-        let s_val = Printf.sprintf "% 8.2f %.4e" !val_nn val_loss in
+        let (wrk_loss_mean_model, val_loss_mean_model) = mean_model_loss in
+        (* let wrk_loss, val_loss, wrk_loss_mean_model, val_loss_mean_model = *)
+        (*   match optimization with *)
+        (*     | `Maximize -> ~-.wrk_loss, ~-.val_loss, ~-.wrk_loss_mean_model, ~-.val_loss_mean_model *)
+        (*     | `Minimize -> wrk_loss, val_loss, wrk_loss_mean_model, val_loss_mean_model *)
+        (* in *)
+
+        let (~.) = match optimization with
+          | `Maximize -> (~-.)
+          | `Minimize -> identity
+        in
+        let delta_wrk = wrk_loss -. wrk_loss_mean_model in
+        let delta_val = val_loss -. val_loss_mean_model in
+        let delta_wrk_pct = delta_wrk /. wrk_loss *. 100.0 in
+        let delta_val_pct = delta_val /. val_loss *. 100.0 in
+        let s_wrk = Printf.sprintf "% 8.2f % .4e % .4e % .4e%%"
+          !wrk_nn ~.wrk_loss ~.delta_wrk delta_wrk_pct
+        in
+        let s_val = Printf.sprintf "% 8.2f % .4e % .4e % .4e%%"
+          !val_nn ~.val_loss ~.delta_val delta_val_pct
+        in
 
         Loss.( { s_wrk; s_val; has_converged = false; val_loss; } )
 
       else
         raise (EmptyFold (Printf.sprintf "wrk_nn=%0.2f val_nn=%0.2f" !wrk_nn !val_nn))
 
-    method mean_model set : float =
-      let sum_ys : float array = Array.make m 0.0 in
-      Array.iteri (fun i y_i ->
-        if set.(i) then
-          Array.iteri (fun j y_ij -> sum_ys.(j) <- sum_ys.(j) +. y_ij) y_i
-      ) ys;
-      let gamma0, _loss = Fibsearch.minimize 0 max_f (Array.get sum_ys) in
-      let gamma = float gamma0 in
-      Utils.epr "[DEBUG mean_model] gamma=%d->%.2f\n%!" gamma0 gamma;
-      gamma
+    method mean_model ~in_set ~out_set : float =
+      match force_mean with
+        | Some gamma0 ->
+          let (wrk_n,val_n,wrk_loss,val_loss) = Array.foldi_left (
+            fun i (wrk_n,val_n,wrk_loss,val_loss) yi ->
+              let wrk_n = if in_set.(i) then wrk_n +. weights.(i) else wrk_n in
+              let val_n = if out_set.(i) then val_n +. weights.(i) else val_n in
+              let wrk_loss = if in_set.(i) then wrk_loss +. yi.(gamma0) else wrk_loss in
+              let val_loss = if out_set.(i) then val_loss +. yi.(gamma0) else val_loss in
+              (wrk_n,val_n,wrk_loss, val_loss)
+          ) (0.0, 0.0, 0.0, 0.0) ys
+          in
+          let l_i = wrk_loss /. wrk_n in
+          let l_o = val_loss /. val_n in
+          mean_model_loss <- (l_i, l_o);
+          let gamma = float gamma0 in
+          Utils.epr "[DEBUG mean_model] gamma=%d->%.2f\n%!" gamma0 gamma;
+          gamma
+        | None ->
+          let sum_wrk_n = ref 0.0 in
+          let sum_val_n = ref 0.0 in
+          let sum_wrk_ys : float array = Array.make m 0.0 in
+          let sum_val_ys : float array = Array.make m 0.0 in
+          Array.iteri (fun i y_i ->
+            if in_set.(i) then (
+              sum_wrk_n := !sum_wrk_n +. weights.(i);
+              Array.iteri (fun j y_ij -> sum_wrk_ys.(j) <- sum_wrk_ys.(j) +. y_ij) y_i;
+            );
+            if out_set.(i) then (
+              sum_val_n := !sum_val_n +. weights.(i);
+              Array.iteri (fun j y_ij -> sum_val_ys.(j) <- sum_val_ys.(j) +. y_ij) y_i;
+            )
+          ) ys;
+          let gamma0, wrk_loss = optimize 0 max_f (Array.get sum_wrk_ys) in
+          let l_i = wrk_loss /. !sum_wrk_n in
+          let l_o = sum_val_ys.(gamma0) /. !sum_val_n in
+          mean_model_loss <- (l_i, l_o);
+          let gamma = float gamma0 in
+          Utils.epr "[DEBUG mean_model] gamma=%d->%.2f\n%!" gamma0 gamma;
+          gamma
 
     method write_model re_folds re_features out_buf =
       let open Model_t in

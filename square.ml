@@ -60,6 +60,7 @@ class splitter
   ~n_rows
   ~num_observations
   ~min_observations_per_node
+  : Loss.splitter
   =
   let y = y_repr_array y_feature n_rows in
 
@@ -475,11 +476,11 @@ class splitter
       else
         raise (EmptyFold (Printf.sprintf "wrk_nn=%0.2f val_nn=%0.2f" !wrk_nn !val_nn))
 
-    method mean_model set : float =
+    method mean_model ~in_set ~out_set : float =
       let sum_y = ref 0.0 in
       let nn = ref 0.0 in
       for i = 0 to n_rows - 1 do
-        if set.(i) then
+        if in_set.(i) then
           let wi = weights.(i) in
           Utils.add_to sum_y (wi *. y.(i));
           Utils.add_to nn wi

@@ -50,6 +50,12 @@ let iter t f =
       f (i_to_a t ifeature)
   ) t.id_to_feature
 
+let iteri t f =
+  Utils.IntMap.iter (
+    fun id ifeature ->
+      f id (i_to_a t ifeature)
+  ) t.id_to_feature
+
 let fold t f x0 =
   let x = ref x0 in
   iter t (
