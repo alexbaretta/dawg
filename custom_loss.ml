@@ -276,154 +276,148 @@ class splitter
 
       match kind with
         | `Cat ->
-          assert false
-          (* (\* categorical feature: find the partition resulting in the *)
-          (*    minimum loss. *\) *)
+          (* categorical feature: find the partition resulting in the
+             minimum loss. *)
 
-          (* (\* sort the levels by sum_z/n -- which is the average of the *)
-          (*    pseudo response's *\) *)
-          (* let pseudo_response_sorted = *)
-          (*   Array.init cardinality ( *)
-          (*     fun k -> *)
-          (*       let n = agg.sum_n.(k) in *)
-          (*       let average_response = agg.sum_z.(k) /. n in *)
-          (*       k, average_response *)
-          (*   ) *)
-          (* in *)
-          (* (\* now, [pseudo_respones_sorted] is not really sorted yet. *)
-          (*      this sorts it in place: *\) *)
-          (* Array.sort ( *)
-          (*   fun (_,avg_z1) (_,avg_z2) -> *)
-          (*     Pervasives.compare avg_z1 avg_z2 *)
-          (* ) pseudo_response_sorted; *)
-          (* (\* phew:  now [pseudo_respone_sorted] is really sorted *\) *)
+          (* sort the levels by sum_z/n -- which is the average of the
+             pseudo response's *)
+          let pseudo_response_sorted =
+            Array.init cardinality (
+              fun k ->
+                let n = agg_sum_n.(k) in
+                let average_response = (min agg_sum_zplus.(k) agg_sum_zplus.(k)) /. n in
+                k, average_response
+            )
+          in
+          (* now, [pseudo_respones_sorted] is not really sorted yet.
+               this sorts it in place: *)
+          let cmp_z (_,avg_z1) (_,avg_z2) = Pervasives.compare avg_z1 avg_z2 in
+          Array.fast_sort cmp_z pseudo_response_sorted;
+          (* phew:  now [pseudo_respone_sorted] is really sorted *)
 
-          (* (\* [s] is index into the array of *)
-          (*    [pseudo_response_sorted] *\) *)
-          (* let s_to_k = Array.init cardinality ( *)
-          (*     fun s -> *)
-          (*       let k, _ = pseudo_response_sorted.(s) in *)
-          (*       k *)
-          (*   ) in *)
+          (* [s] is index into the array of
+             [pseudo_response_sorted] *)
+          let s_to_k = Array.map fst pseudo_response_sorted in
 
-          (* let k_0    = s_to_k.(0) in *)
-          (* let k_last = s_to_k.(cardinality-1) in *)
+          let k_0    = s_to_k.(0) in
+          let k_last = s_to_k.(cardinality-1) in
 
-          (* (\* initialize the cumulative sums from left to right *\) *)
-          (* left_sum_n.(k_0) <- agg_sum_n.(k_0); *)
-          (* left_sum_z.(k_0) <- agg_sum_z.(k_0); *)
-          (* left_sum_l.(k_0) <- agg_sum_l.(k_0); *)
+          (* initialize the cumulative sums from left to right *)
+          left_sum_n.(k_0)      <- agg_sum_n.(k_0);
+          left_sum_zplus.(k_0)  <- agg_sum_zplus.(k_0);
+          left_sum_zminus.(k_0) <- agg_sum_zminus.(k_0);
+          left_sum_loss.(k_0)   <- agg_sum_loss.(k_0);
 
-          (* right_sum_n.(k_last) <- agg_sum_n.(k_last); *)
-          (* right_sum_z.(k_last) <- agg_sum_z.(k_last); *)
-          (* right_sum_l.(k_last) <- agg_sum_l.(k_last); *)
+          right_sum_n.(k_last)      <- agg_sum_n.(k_last);
+          right_sum_zplus.(k_last)  <- agg_sum_zplus.(k_last);
+          right_sum_zminus.(k_last) <- agg_sum_zminus.(k_last);
+          right_sum_loss.(k_last)   <- agg_sum_loss.(k_last);
 
-          (* (\* compute the cumulative sums from left to right *\) *)
-          (* for ls = 1 to cardinality-1 do *)
+          (* compute the cumulative sums from left to right *)
+          for ls = 1 to cardinality-1 do
 
-          (*   let lk   = s_to_k.(ls)   in *)
-          (*   let lk_1 = s_to_k.(ls-1) in *)
+            let lk   = s_to_k.(ls)   in
+            let lk_1 = s_to_k.(ls-1) in
 
-          (*   left_sum_n.(lk) <- left_sum_n.(lk_1) +. agg_sum_n.(lk); *)
-          (*   left_sum_z.(lk) <- left_sum_z.(lk_1) +. agg_sum_z.(lk); *)
-          (*   left_sum_l.(lk) <- left_sum_l.(lk_1) +. agg_sum_l.(lk); *)
+            left_sum_n.(lk)      <- left_sum_n.(lk_1) +. agg_sum_n.(lk);
+            left_sum_zplus.(lk)  <- left_sum_zplus.(lk_1) +. agg_sum_zplus.(lk);
+            left_sum_zminus.(lk) <- left_sum_zminus.(lk_1) +. agg_sum_zminus.(lk);
+            left_sum_loss.(lk)   <- left_sum_loss.(lk_1) +. agg_sum_loss.(lk);
 
-          (*   let rs = cardinality - ls - 1 in *)
-          (*   let rk   = s_to_k.(rs)   in *)
-          (*   let rk_1 = s_to_k.(rs+1) in *)
+            let rs = cardinality - ls - 1 in
+            let rk   = s_to_k.(rs)   in
+            let rk_1 = s_to_k.(rs+1) in
 
-          (*   right_sum_n.(rk) <- right_sum_n.(rk_1) +. agg_sum_n.(rk); *)
-          (*   right_sum_z.(rk) <- right_sum_z.(rk_1) +. agg_sum_z.(rk); *)
-          (*   right_sum_l.(rk) <- right_sum_l.(rk_1) +. agg_sum_l.(rk); *)
+            right_sum_n.(rk)      <- right_sum_n.(rk_1) +. agg_sum_n.(rk);
+            right_sum_zplus.(rk)  <- right_sum_zplus.(rk_1) +. agg_sum_zplus.(rk);
+            right_sum_zminus.(rk) <- right_sum_zminus.(rk_1) +. agg_sum_zminus.(rk);
+            right_sum_loss.(rk)   <- right_sum_loss.(rk_1) +. agg_sum_loss.(rk);
 
+          done;
+
+          let best_split = ref None in
+
+          (* find and keep optimal split -- the one associated with the
+             minimum loss *)
+          (* for s = 0 to cardinality-2 do *)
+          let _ = optimize 0 (cardinality - 2) (fun s ->
+            let k   = s_to_k.(s)   in
+            let k_1 = s_to_k.(s+1) in
+
+            let left_n  = left_sum_n.(k)    in
+            let right_n = right_sum_n.(k_1) in
+
+            (* we can only have a split when the left and right
+               approximations are based on one or more observations *)
+
+            if left_n > min_observations_per_node && right_n > min_observations_per_node then (
+
+              let left_zplus = left_sum_zplus.(k) in
+              let left_zminus = left_sum_zminus.(k) in
+              let left_loss = left_sum_loss.(k) in
+              let left_gamma, left_z =
+                match compare left_zplus left_zminus with
+                  | -1 -> if left_zplus < 0.0 then 1, left_zplus else 0, 0.0
+                  | 1  -> if left_zminus < 0.0 then -1, left_zminus else 0, 0.0
+                  | 0  -> 0, 0.0
+                  | _ -> assert false
+              in
+
+              let right_zplus = right_sum_zplus.(k) in
+              let right_zminus = right_sum_zminus.(k) in
+              let right_loss = right_sum_loss.(k) in
+              let right_gamma, right_z =
+                match compare right_zplus right_zminus with
+                  | -1 -> if right_zplus < 0.0 then 1, right_zplus else 0, 0.0
+                  | 1  -> if right_zminus < 0.0 then -1, right_zminus else 0, 0.0
+                  | 0  -> 0, 0.0
+                  | _ -> assert false
+              in
+
+              let total_loss = left_loss +. left_z +. right_loss +. right_z in
+              (* Utils.epr "[DEBUG] searching: id=%d k=%d/%d total_loss=%f left_zplus=%f left_zminus=%f left_z=%f right_zplus=%f right_zminus=%f right_z=%f\n%!" *)
+              (*   feature_id k cardinality total_loss left_zplus left_zminus left_z right_zplus right_zminus right_z; *)
+              if right_gamma = 0 && left_gamma = 0 then
+                total_loss
+              else
+                let is_total_loss_smaller =
+                  match !best_split with
+                    | None -> true
+                    | Some (best_total_loss, best_split) ->
+                     total_loss < best_total_loss
+                in
+
+                if is_total_loss_smaller then (
+                  let left = {
+                    s_n = left_n;
+                    s_gamma = float left_gamma;
+                    s_loss = left_loss;
+                  }
+                  in
+
+                  let right = {
+                    s_n = right_n;
+                    s_gamma = float right_gamma;
+                    s_loss = right_loss;
+                  }
+                  in
+
+                  let ord_split = {
+                    os_feature_id = feature_id;
+                    os_split = s;
+                    os_left = left;
+                    os_right = right;
+                  } in
+
+                  let split = `CategoricalSplit (ord_split, s_to_k) in
+                  best_split := Some (total_loss, split)
+                );
+                total_loss
+            )
+            else infinity
+          )
           (* done; *)
-
-          (* let best_split = ref None in *)
-
-          (* (\* find and keep optimal split -- the one associated with the *)
-          (*    minimum loss *\) *)
-          (* (\* for s = 0 to cardinality-2 do *\) *)
-          (* let _ = minimize 0 (cardinality - 2) (fun s -> *)
-          (*   let k   = s_to_k.(s)   in *)
-          (*   let k_1 = s_to_k.(s+1) in *)
-
-          (*   let left_n  = left_sum_n.(k)    in *)
-          (*   let right_n = right_sum_n.(k_1) in *)
-
-          (*   (\* we can only have a split when the left and right *)
-          (*      approximations are based on one or more observations *\) *)
-
-          (*   if left_n > min_observations_per_node && right_n > min_observations_per_node then ( *)
-
-          (*     let left_gamma  = left_sum_z.(k)    /. left_n  in *)
-          (*     let right_gamma = right_sum_z.(k_1) /. right_n in *)
-
-          (*     let left_gamma, right_gamma = *)
-          (*       Feat_utils.apply_max_gamma_opt ~max_gamma_opt left_gamma right_gamma *)
-          (*     in *)
-
-          (*     if match monotonicity with *)
-          (*        | `Positive -> right_gamma > left_gamma *)
-          (*        | `Negative -> right_gamma < left_gamma *)
-          (*        | `Arbitrary -> true *)
-          (*     then ( *)
-
-          (*       let loss_left = updated_loss *)
-          (*         ~gamma:left_gamma *)
-          (*         ~sum_l:left_sum_l.(k) *)
-          (*         ~sum_z:left_sum_z.(k) *)
-          (*         ~sum_n:left_n *)
-          (*       in *)
-
-          (*       let loss_right = updated_loss *)
-          (*         ~gamma:right_gamma *)
-          (*         ~sum_l:right_sum_l.(k_1) *)
-          (*         ~sum_z:right_sum_z.(k_1) *)
-          (*         ~sum_n:right_n *)
-          (*       in *)
-
-          (*       let total_loss = loss_left +. loss_right in *)
-
-          (*       let is_total_loss_smaller = *)
-          (*         match !best_split with *)
-          (*           | None -> true *)
-          (*           | Some (best_total_loss, best_split) -> *)
-          (*            total_loss < best_total_loss *)
-          (*       in *)
-
-          (*       if is_total_loss_smaller then ( *)
-          (*         let left = { *)
-          (*           s_n = left_n ; *)
-          (*           s_gamma = left_gamma ; *)
-          (*           s_loss = loss_left; *)
-          (*         } *)
-          (*         in *)
-
-          (*         let right = { *)
-          (*           s_n = right_n ; *)
-          (*           s_gamma = right_gamma ; *)
-          (*           s_loss = loss_right; *)
-          (*         } *)
-          (*         in *)
-
-          (*         let ord_split = { *)
-          (*           os_feature_id = feature_id; *)
-          (*           os_split = s; *)
-          (*           os_left = left; *)
-          (*           os_right = right; *)
-          (*         } in *)
-
-          (*         let split = `CategoricalSplit (ord_split, s_to_k) in *)
-          (*         best_split := Some (total_loss, split) *)
-          (*       ); *)
-          (*       total_loss *)
-          (*     ) *)
-          (*          else infinity *)
-          (*     ) *)
-          (*   else infinity *)
-          (* ) *)
-          (* (\* done; *\) *)
-          (* in !best_split *)
+          in !best_split
 
         | `Ord ->
 
@@ -438,7 +432,6 @@ class splitter
           let _ : float = Array.float_cumsum_right agg_sum_loss right_sum_loss in
 
           let best_split = ref None in
-
 
           (* find and keep optimal split -- the one associated with the minimum loss *)
           (* for k = 0 to cardinality-2 do *)
@@ -488,14 +481,14 @@ class splitter
 
                 if is_total_loss_smaller then (
                   let left = {
-                    s_n = left_n ;
+                    s_n = left_n;
                     s_gamma = float left_gamma;
                     s_loss = left_loss;
                   }
                   in
 
                   let right = {
-                    s_n = right_n ;
+                    s_n = right_n;
                     s_gamma = float right_gamma ;
                     s_loss = right_loss;
                   }
@@ -503,9 +496,9 @@ class splitter
 
                   let curr_split = `OrdinalSplit {
                     os_feature_id = feature_id;
-                    os_split = k ;
-                    os_left = left ;
-                    os_right = right ;
+                    os_split = k;
+                    os_left = left;
+                    os_right = right;
                   }
                   in
                   (* Utils.epr "[DEBUG] best split id=%d k=%d/%d total_loss=%f left_zplus=%f left_zminus=%f left_z=%f right_zplus=%f right_zminus=%f right_z=%f\n%!" *)
