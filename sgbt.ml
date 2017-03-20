@@ -197,7 +197,7 @@ let rec learn_with_fold_rate conf t iteration =
           in
           let now = Unix.gettimeofday () in
           (* Utils.pr "%6.0fs %6.2fs iter % 3d % 7d  %s %s   (%5.2f - %5.2f = %5.2f) %+.4e %+.4e (smooth=%b)\n%!" *)
-          Utils.pr "%6.0fs %6.2fs iter % 3d % 7d  %s %s\n%!"
+          Utils.pr "%6.0fs %6.2fs iter % 3d % 7d  %s %s %+.4e %+.4e\n%!"
             (now -. iteration.fold_start_time)
             (now -. iteration.tree_start_time)
             iteration.fold_id
@@ -208,8 +208,8 @@ let rec learn_with_fold_rate conf t iteration =
             (* val_loss *)
             (* loss_improvement *)
 
-            (* convergence_rate *)
-            (* convergence_rate_hat *)
+            convergence_rate
+            convergence_rate_hat
             (* use_smoother *)
           ;
 
