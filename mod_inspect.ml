@@ -51,7 +51,7 @@ let update_importance branch branch_size leaf feature_id_to_importance =
     (* iterate through the feature_id's in a branch, updating their
        feature importance scores *)
     List.fold_left (
-      fun map feature_id ->
+      fun map (side, feature_id) ->
         let feature_importance =
           try
             Utils.IntMap.find feature_id feature_id_to_importance
@@ -61,20 +61,22 @@ let update_importance branch branch_size leaf feature_id_to_importance =
         let unsigned = feature_importance.unsigned in
         let unsigned = incr_opt score unsigned in
         let positive, negative =
-          match sign with
-            | `Neg ->
+          match sign, side with
+            | `Neg, `Right
+            | `Pos, `Left ->
               (* update negative *)
               let negative = feature_importance.negative in
               let negative = incr_opt score negative in
               feature_importance.positive, negative
 
-            | `Pos ->
-              (* update negative *)
+            | `Pos, `Right
+            | `Neg, `Left ->
+              (* update positive *)
               let positive = feature_importance.positive in
               let positive = incr_opt score positive in
               positive, feature_importance.negative
 
-            | `Zero ->
+            | `Zero, _ ->
               (* update neither *)
               feature_importance.positive, feature_importance.negative
         in
@@ -100,10 +102,11 @@ let rec fold_tree f branch branch_size x = function
       cn_right_tree = right_tree;
     } ->
 
-    let branch = feature_id :: branch in
+    let left_branch = (`Left, feature_id) :: branch in
+    let right_branch = (`Right, feature_id) :: branch in
     let branch_size = branch_size + 1 in
-    let x = fold_tree f branch branch_size x left_tree in
-    let x = fold_tree f branch branch_size x right_tree in
+    let x = fold_tree f left_branch branch_size x left_tree in
+    let x = fold_tree f right_branch branch_size x right_tree in
     x
 
 let fold_tree f x0 tree =
@@ -225,11 +228,14 @@ let main model_file_path =
 
   let feature_id_to_importance = importance_of_features folds in
 
+  printf "%10s %-*s % 3s %s %s %s\n"
+    "" max_feature_name_len "" ""
+    "unsigned" "positive" "negative";
   List.iter (
     fun (feature_id, { unsigned; positive; negative }) ->
       let feature_name_opt, kind = Hashtbl.find feature_id_to_name_opt
           feature_id in
-      printf "%10d %-*s %s %s %s %s\n"
+      printf "%10d %-*s % 3s %s %s %s\n"
         feature_id
         max_feature_name_len
         (match feature_name_opt with Some n -> n | None -> "")

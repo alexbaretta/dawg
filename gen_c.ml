@@ -401,7 +401,7 @@ let commands =
     let input_file_path =
       let doc = "path of input model file" in
       Arg.(required & opt (some string) None &
-           info ["i";"input"] ~docv:"PATH" ~doc)
+           info ["m";"model"] ~docv:"PATH" ~doc)
     in
     let output_file_path =
       let doc = "path of output file (absent=stdout)" in
@@ -422,7 +422,7 @@ let commands =
       let doc = "C/C++ modifiers to be applied to this function definition.\
           (E.g. static, inline, extern, virtual, ...)" in
       Arg.(value & opt (some & list string) None &
-           info ["m";"modifier"] ~doc)
+           info ["M";"modifier"] ~doc)
     in
     let output_logodds =
       let doc = "output is a log-odds value instead of a probability value" in

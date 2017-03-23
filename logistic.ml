@@ -869,43 +869,47 @@ class splitter
           in !best_split
 
     method metrics ~in_set ~out_set =
-      let wrk_tt = ref 0.0 in
-      let wrk_tf = ref 0.0 in
-      let wrk_ft = ref 0.0 in
-      let wrk_ff = ref 0.0 in
+      let wrk_tp = ref 0.0 in
+      let wrk_tn = ref 0.0 in
+      let wrk_fp = ref 0.0 in
+      let wrk_fn = ref 0.0 in
       let wrk_loss = ref 0.0 in
       let wrk_nn = ref 0.0 in
 
-      let val_tt = ref 0.0 in
-      let val_tf = ref 0.0 in
-      let val_ft = ref 0.0 in
-      let val_ff = ref 0.0 in
+      let val_tp = ref 0.0 in
+      let val_tn = ref 0.0 in
+      let val_fp = ref 0.0 in
+      let val_fn = ref 0.0 in
       let val_loss = ref 0.0 in
       let val_nn = ref 0.0 in
 
       for i = 0 to n_rows - 1 do
         if in_set.(i) then (
           (* working folds *)
-          let cell_p, cell_n =
-            if f.(i) >= 0.0 then wrk_tt, wrk_ft else wrk_tf, wrk_ff
-          in
+          let p_hat = probability f.(i) in
+          let omp_hat = 1.0 -. p_hat in
           let weight_i = weights.(i) in
           let p = y.(i) in
-          Utils.add_to cell_p (p *. weight_i);
-          Utils.add_to cell_n ((1.0 -. p) *. weight_i);
+          let omp = 1.0 -. p in
+          Utils.add_to wrk_tp (p_hat *. p *. weight_i);
+          Utils.add_to wrk_tn (omp_hat *. omp *. weight_i);
+          Utils.add_to wrk_fp (p_hat *. omp *. weight_i);
+          Utils.add_to wrk_fn (omp_hat *. p *. weight_i);
           Utils.add_to wrk_nn weight_i;
           Utils.add_to wrk_loss l.(i)
         );
 
         if out_set.(i) then (
           (* validation fold *)
-          let cell_p, cell_n =
-            if f.(i) >= 0.0 then val_tt, val_ft else val_tf, val_ff
-          in
+          let p_hat = probability f.(i) in
+          let omp_hat = 1.0 -. p_hat in
           let weight_i = weights.(i) in
           let p = y.(i) in
-          Utils.add_to cell_p (p *. weight_i);
-          Utils.add_to cell_n ((1.0 -. p) *. weight_i);
+          let omp = 1.0 -. p in
+          Utils.add_to val_tp (p_hat *. p *. weight_i);
+          Utils.add_to val_tn (omp_hat *. omp *. weight_i);
+          Utils.add_to val_fp (p_hat *. omp *. weight_i);
+          Utils.add_to val_fn (omp_hat *. p *. weight_i);
           Utils.add_to val_nn weight_i;
           Utils.add_to val_loss l.(i)
         )
@@ -913,29 +917,31 @@ class splitter
 
       if !wrk_nn > 0.0 && !val_nn > 0.0 then
         let wrk_n = !wrk_nn in
-        let wrk_tt = !wrk_tt /. wrk_n in
-        let wrk_tf = !wrk_tf /. wrk_n in
-        let wrk_ft = !wrk_ft /. wrk_n in
-        let wrk_ff = !wrk_ff /. wrk_n in
+        let wrk_tp = !wrk_tp /. wrk_n in
+        let wrk_tn = !wrk_tn /. wrk_n in
+        let wrk_fp = !wrk_fp /. wrk_n in
+        let wrk_fn = !wrk_fn /. wrk_n in
         let wrk_loss = !wrk_loss /. wrk_n in
 
         let val_n = !val_nn in
-        let val_tt = !val_tt /. val_n in
-        let val_tf = !val_tf /. val_n in
-        let val_ft = !val_ft /. val_n in
-        let val_ff = !val_ff /. val_n in
+        let val_tp = !val_tp /. val_n in
+        let val_tn = !val_tn /. val_n in
+        let val_fp = !val_fp /. val_n in
+        let val_fn = !val_fn /. val_n in
         let val_loss = !val_loss /. val_n in
 
-        let val_frac_misclassified = val_tf +. val_ft in
+        let val_frac_misclassified = val_fp +. val_fn in
         assert ( val_frac_misclassified >= 0. );
 
         let has_converged = val_frac_misclassified = 0.0 in
 
-        let s_wrk = Printf.sprintf "% 8.2f %.4e %.4e %.4e %.4e %.4e"
-            wrk_n wrk_loss wrk_tt wrk_tf wrk_ft wrk_ff in
+        let wrk_t = wrk_tp +. wrk_tn in
+        let s_wrk = Printf.sprintf "% 8.2f %.4e %.4e   %.4e %.4e %.4e %.4e"
+            wrk_n wrk_loss wrk_t wrk_tp wrk_tn wrk_fp wrk_fn in
 
-        let s_val = Printf.sprintf "% 8.2f %.4e %.4e %.4e %.4e %.4e"
-            val_n val_loss val_tt val_tf val_ft val_ff in
+        let val_t = val_tp +. val_tn in
+        let s_val = Printf.sprintf "% 8.2f %.4e %.4e   %.4e %.4e %.4e %.4e"
+            val_n val_loss val_t val_tp val_tn val_fp val_fn in
 
         Loss.( {s_wrk; s_val; has_converged; val_loss} )
 

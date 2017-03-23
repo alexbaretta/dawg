@@ -63,7 +63,7 @@ type t = {
   folds : int array;
 }
 
-let exceed_max_trees num_iters max_trees = num_iters >= max_trees
+let exceed_max_trees num_iters max_trees = num_iters > max_trees
 
 let reset t mean_model =
   let first_tree = `Leaf mean_model in
@@ -159,115 +159,111 @@ let rec learn_with_fold_rate conf t iteration =
     `Converged (iteration.learning_rate, fold)
   in
 
-  match Tree.make m 0 in_subset with
-    | None ->
-      print_endline "converged: no more trees";
-      converge iteration
+  match conf.max_trees_opt with
+    | Some max_trees when exceed_max_trees iteration.i max_trees ->
+        (* convergence, kinda *)
+        Utils.pr "tree limit constraint met\n";
+        converge iteration
+    | _ ->
+      match Tree.make m 0 in_subset with
+        | None ->
+          print_endline "converged: no more trees";
+          converge iteration
 
-    | Some tree ->
-      let shrunken_tree = match conf.loss_type with
-        | `Custom _ -> tree
-        | _ ->
-          let tree = Tree.scale_optimally tree in_subset in
-          Tree.shrink iteration.learning_rate tree
-      in
-      let gamma = t.eval (Feat_map.a_find_by_id t.feature_map) shrunken_tree in
+        | Some tree ->
+          let shrunken_tree = match conf.loss_type with
+            | `Custom _ -> tree
+            | _ ->
+              let tree = Tree.scale_optimally tree in_subset in
+              Tree.shrink iteration.learning_rate tree
+          in
+          let gamma = t.eval (Feat_map.a_find_by_id t.feature_map) shrunken_tree in
 
-      match t.splitter#boost gamma with
-        | `NaN i -> (
-            Utils.epr "[WARNING] diverged: nan at row %d\n%!" i;
-            cut_learning_rate conf t iteration
-          )
+          match t.splitter#boost gamma with
+            | `NaN i -> (
+              Utils.epr "[WARNING] diverged: nan at row %d\n%!" i;
+              cut_learning_rate conf t iteration
+            )
 
-        | `Ok ->
-          let { Loss.s_wrk; s_val; has_converged; val_loss } =
-            t.splitter#metrics ~in_set ~out_set in
+            | `Ok ->
+              let { Loss.s_wrk; s_val; has_converged; val_loss } =
+                t.splitter#metrics ~in_set ~out_set in
 
-          (* compute convergence rate and smooth it *)
-          let loss_improvement = iteration.prev_loss -. val_loss in
-          let convergence_rate = loss_improvement /. abs_float val_loss in
-          let convergence_rate_smoother, convergence_rate_hat, use_smoother =
-            if conf.convergence_rate_smoother_forgetful_factor > 0.0 then
-              let convergence_rate_smoother =
-                Rls1.add iteration.convergence_rate_smoother convergence_rate
+              (* compute convergence rate and smooth it *)
+              let loss_improvement = iteration.prev_loss -. val_loss in
+              let convergence_rate = loss_improvement /. abs_float val_loss in
+              let convergence_rate_smoother, convergence_rate_hat, use_smoother =
+                if conf.convergence_rate_smoother_forgetful_factor > 0.0 then
+                  let convergence_rate_smoother =
+                    Rls1.add iteration.convergence_rate_smoother convergence_rate
+                  in
+                  let convergence_rate_hat = Rls1.theta convergence_rate_smoother in
+                  convergence_rate_smoother, convergence_rate_hat, true
+                else
+                  iteration.convergence_rate_smoother, convergence_rate, false
               in
-              let convergence_rate_hat = Rls1.theta convergence_rate_smoother in
-              convergence_rate_smoother, convergence_rate_hat, true
-            else
-              iteration.convergence_rate_smoother, convergence_rate, false
-          in
-          let now = Unix.gettimeofday () in
-          (* Utils.pr "%6.0fs %6.2fs iter % 3d % 7d  %s %s   (%5.2f - %5.2f = %5.2f) %+.4e %+.4e (smooth=%b)\n%!" *)
-          Utils.pr "%6.0fs %6.2fs iter % 3d % 7d  %s  %s %+.4e %+.4e\n%!"
-            (now -. iteration.fold_start_time)
-            (now -. iteration.tree_start_time)
-            iteration.fold_id
-            iteration.i
-            s_wrk
-            s_val
-            (* iteration.prev_loss *)
-            (* val_loss *)
-            (* loss_improvement *)
+              let now = Unix.gettimeofday () in
+              (* Utils.pr "%6.0fs %6.2fs iter % 3d % 7d  %s %s   (%5.2f - %5.2f = %5.2f) %+.4e %+.4e (smooth=%b)\n%!" *)
+              Utils.pr "%6.0fs %6.2fs iter % 3d % 7d  %s  %s %+.4e %+.4e\n%!"
+                (now -. iteration.fold_start_time)
+                (now -. iteration.tree_start_time)
+                iteration.fold_id
+                iteration.i
+                s_wrk
+                s_val
+                (* iteration.prev_loss *)
+                (* val_loss *)
+                (* loss_improvement *)
 
-            convergence_rate
-            convergence_rate_hat
-            (* use_smoother *)
-          ;
+                convergence_rate
+                convergence_rate_hat
+               (* use_smoother *)
+              ;
 
-          let selected_features =
-            IntSet.union iteration.selected_features (Tree.extract_features tree)
-          in
-          let allowed_features =
-            match conf.max_features_opt with
-              | None -> None
-              | Some max_features ->
-                match iteration.allowed_features with
-                  | (Some _) as x -> x
-                  | None ->
-                    if IntSet.cardinal selected_features > max_features then
-                      Some (Feat_map.restrict t.feature_map selected_features)
-                    else
-                      None
-          in
-          let next_iteration () =
-            (* let stats = Model_utils.tree_extract_stats [] fake_stats tree in *)
-            (* Utils.epr "[DEBUG] i=%d %s\n%!" *)
-            (*   iteration.i *)
-            (*   (String.concat " " (List.rev_map string_of_stats stats)); *)
-            { iteration with
-              prev_loss = val_loss;
-              i = iteration.i + 1;
-              tree_start_time = Unix.gettimeofday();
-              rev_trees = shrunken_tree :: iteration.rev_trees;
-              convergence_rate_smoother;
-              selected_features;
-              allowed_features;
-            }
-          in
-          let continue_learning () =
-            learn_with_fold_rate conf t (next_iteration ())
-          in
+              let selected_features =
+                IntSet.union iteration.selected_features (Tree.extract_features tree)
+              in
+              let allowed_features =
+                match conf.max_features_opt with
+                  | None -> None
+                  | Some max_features ->
+                    match iteration.allowed_features with
+                      | (Some _) as x -> x
+                      | None ->
+                        if IntSet.cardinal selected_features > max_features then
+                          Some (Feat_map.restrict t.feature_map selected_features)
+                        else
+                          None
+              in
+              let next_iteration () =
+                (* let stats = Model_utils.tree_extract_stats [] fake_stats tree in *)
+                (* Utils.epr "[DEBUG] i=%d %s\n%!" *)
+                (*   iteration.i *)
+                (*   (String.concat " " (List.rev_map string_of_stats stats)); *)
+                { iteration with
+                  prev_loss = val_loss;
+                  i = iteration.i + 1;
+                  tree_start_time = Unix.gettimeofday();
+                  rev_trees = shrunken_tree :: iteration.rev_trees;
+                  convergence_rate_smoother;
+                  selected_features;
+                  allowed_features;
+                }
+              in
+              let continue_learning () =
+                learn_with_fold_rate conf t (next_iteration ())
+              in
 
-          if iteration.timeout () then (
-            Utils.pr "timeout!\n";
-            let fold = {
-              Model_t.fold_id = iteration.fold_id;
-              mean = iteration.mean_model;
-              trees = shrunken_tree :: iteration.rev_trees;
-            }
-            in
-            `Timeout fold
-          ) else
-            match conf.max_trees_opt with
-              | Some max_trees ->
-                if exceed_max_trees iteration.i max_trees then (
-                  (* convergence, kinda *)
-                  Utils.pr "tree limit constraint met\n";
-                  converge (next_iteration ())
-                )
-                else continue_learning ()
-
-              | None ->
+              if iteration.timeout () then (
+                Utils.pr "timeout!\n";
+                let fold = {
+                  Model_t.fold_id = iteration.fold_id;
+                  mean = iteration.mean_model;
+                  trees = shrunken_tree :: iteration.rev_trees;
+                }
+                in
+                `Timeout fold
+              ) else
                 if has_converged then (
                   Utils.pr "converged: metrics indicate continuing is pointless\n";
                   converge (next_iteration ())

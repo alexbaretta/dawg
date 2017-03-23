@@ -176,7 +176,7 @@ let write_cells_to_work_dir work_dir header next_row config =
         exit 1
       );
       let mcore = Mcore.spawn mcore (fun () ->
-        Printf.printf "[STRT] sorting files=%d cells=%d ... %!" f c;
+        Printf.printf "[STRT] sorting files=%d cells=%d ... \n%!" f c;
         Array.fast_sort compare_cells cells;
         Printf.printf "[DONE] sorting files=%d cells=%d\n%!" f c;
         write_cells_to_file work_dir f cells;
@@ -673,10 +673,10 @@ let write_feature j i_values n dog feature_id_to_name config =
           feature_id_to_name config in
       match cf with
         | `Uniform ->
-          Printf.printf "%d cat: %s (uniform)\n%!" j name_for_log
+          Printf.printf "% 4d cat: %s (uniform)\n%!" j name_for_log
 
         | `NonUniform cat ->
-          Printf.printf "%d cat: %s\n%!" j name_for_log;
+          Printf.printf "% 4d cat: %s\n%!" j name_for_log;
           Dog_io.WO.add_feature dog cat
     else
       let feature_name = feature_id_to_name j in
@@ -690,16 +690,16 @@ let write_feature j i_values n dog feature_id_to_name config =
     in
     match float_or_int_feat with
       | `Uniform ->
-        Printf.printf "%d num: %s (uniform)\n%!" j name_for_log
+        Printf.printf "% 4d num: %s (uniform)\n%!" j name_for_log
 
       | `NonUniform feat -> (
           match feat with
             | `Ord ord ->
               (match ord.o_breakpoints with
                 | `Float _ ->
-                  Printf.printf "%d fp : %s\n%!" j name_for_log;
+                  Printf.printf "% 4d fp : %s\n%!" j name_for_log;
                 | `Int _ ->
-                  Printf.printf "%d int: %s\n%!" j name_for_log
+                  Printf.printf "% 4d int: %s\n%!" j name_for_log
               );
               Dog_io.WO.add_feature dog feat
 
@@ -707,7 +707,7 @@ let write_feature j i_values n dog feature_id_to_name config =
         )
 
   else (
-    Printf.printf "%d (%s): implicit uniform\n%!" j name_for_log
+    Printf.printf "% 4d (%s): implicit uniform\n%!" j name_for_log
   )
 
 

@@ -393,7 +393,7 @@ let commands =
     let min_convergence_rate =
       let doc = "learn until the convergence rate of the validation loss is \
                  below this value" in
-      Arg.(value & opt float 0.001 &
+      Arg.(value & opt float 0.0 &
            info ["c";"min-convergence-rate"] ~docv:"FLOAT" ~doc)
     in
 
