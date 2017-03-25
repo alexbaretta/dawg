@@ -155,9 +155,25 @@ let dummy_cell = {
    c := cell index
    f := file index
 *)
+let now () = Unix.gettimeofday ()
 
 let write_cells_to_work_dir work_dir header next_row config =
   (* let num_features = List.length header in *)
+  let job_start_time = now () in
+  let log_task task_start_time fmt =
+    let now = now () in
+    Utils.pr ("[% 10.3f][% 7.3f]%s" ^^ fmt) (now -. job_start_time) (now -. task_start_time)
+      (let s = string_of_format fmt in
+       if String.length s > 0 && s.[0] <> '[' then " " else ""
+      )
+  in
+  let log fmt =
+    let now = now () in
+    Utils.pr ("[% 10.3f][       ]%s" ^^ fmt) (now -. job_start_time)
+      (let s = string_of_format fmt in
+       if String.length s > 0 && s.[0] <> '[' then " " else ""
+      )
+  in
 
   let header_length_opt = match header with
     | [] -> None
@@ -171,10 +187,11 @@ let write_cells_to_work_dir work_dir header next_row config =
     )
     else (
       Mcore.spawn mcore (fun () ->
-        Printf.printf "[STRT] sorting files=%d cells=%d ... \n%!" f c;
+        log "[STRT] sorting files=%d cells=%d ... \n%!" f c;
+        let task_start_time = now () in
         Array.fast_sort compare_cells cells;
-        Printf.printf "[DONE] sorting files=%d cells=%d\n%!" f c;
         write_cells_to_file work_dir f cells;
+        log_task task_start_time "[DONE] sorting files=%d cells=%d\n%!" f c;
       ) ();
       let cells = Array.make config.max_cells_in_mem dummy_cell in
       cells.(0) <- cell;
@@ -182,19 +199,26 @@ let write_cells_to_work_dir work_dir header next_row config =
     )
   in
 
-  let rec loop ~cells ~mcore ~cell_row ~f ~c prev_dense_row_length_opt =
-    if cell_row mod 10000 = 0 then
-      Printf.printf "files=%d rows=%d\n%!" f cell_row;
+  let rec loop ~task_start_time ~cells ~mcore ~cell_row ~f ~c prev_dense_row_length_opt =
+    let task_start_time =
+      if cell_row mod 10000 = 0 then (
+        log_task task_start_time "[LOOP] files=%d rows=%d\n%!" f cell_row;
+        now ()
+      ) else task_start_time
+    in
 
     match next_row () with
       | `Ok `EOF ->
         if c > 0 then (
           (* write trailing cells, if there are any *)
+          log "[STRT] sorting files=%d cells=%d ... \n%!" f c;
           let trailing_cells = Array.make c dummy_cell in
+          let task_start_time = now () in
           (* copy *)
           Array.blit cells 0 trailing_cells 0 c;
           Array.fast_sort compare_cells trailing_cells;
           write_cells_to_file work_dir f trailing_cells;
+          log_task task_start_time "[DONE] sorting files=%d cells=%d\n%!" f c;
           cell_row, f+1
         )
         else
@@ -216,8 +240,8 @@ let write_cells_to_work_dir work_dir header next_row config =
             | None -> Some dense_row_length (* first dense row *)
             | Some prev_dense_row_length ->
               if not config.allow_variable_length_dense_rows &&
-                 prev_dense_row_length <> dense_row_length then (
-                Printf.printf "dense row %d has length %d, which is \
+                prev_dense_row_length <> dense_row_length then (
+                   Printf.printf "dense row %d has length %d, which is \
                                different than length %d of previous \
                                dense rows.\n%!"
                   (cell_row+1) dense_row_length prev_dense_row_length;
@@ -225,7 +249,7 @@ let write_cells_to_work_dir work_dir header next_row config =
               );
               Some dense_row_length
         in
-        loop ~cells ~mcore ~cell_row:(cell_row + 1) ~f ~c dense_row_length_opt
+        loop ~task_start_time ~cells ~mcore ~cell_row:(cell_row + 1) ~f ~c dense_row_length_opt
 
       | `Ok (`Sparse sparse) ->
         let cells, mcore, c, f = List.fold_left (
@@ -233,7 +257,7 @@ let write_cells_to_work_dir work_dir header next_row config =
               let cell = { cell_column; cell_row; cell_value } in
               append_cell ~cells ~mcore ~c ~f cell
           ) (cells, mcore, c, f) sparse in
-        loop ~cells ~mcore ~cell_row:(cell_row+1) ~f ~c prev_dense_row_length_opt
+        loop ~task_start_time ~cells ~mcore ~cell_row:(cell_row+1) ~f ~c prev_dense_row_length_opt
 
       | `SyntaxError err ->
         print_endline (Csv_io.string_of_error_location err);
@@ -251,7 +275,7 @@ let write_cells_to_work_dir work_dir header next_row config =
   in
   let cells = Array.make config.max_cells_in_mem dummy_cell in
   let mcore = Mcore.create_mprocess 2 in
-  let result = loop ~cells ~mcore ~cell_row:0 ~f:0 ~c:0 header_length_opt in
+  let result = loop ~task_start_time:job_start_time ~cells ~mcore ~cell_row:0 ~f:0 ~c:0 header_length_opt in
   let success = Mcore.sync mcore in
   if not success then (
     Utils.epr "[ERROR] one sorting task failed\n%!";
