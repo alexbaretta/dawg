@@ -468,13 +468,15 @@ class splitter
 
         let val_loss = !val_loss /. !val_nn in
 
-        let s_wrk = Printf.sprintf "% 8.2f %.4e" !wrk_nn wrk_loss in
-        let s_val = Printf.sprintf "% 8.2f %.4e" !val_nn val_loss in
+        let s_wrk  = Printf.sprintf "% 8.2f % 6.4e" !wrk_nn wrk_loss in
+        let s_val  = Printf.sprintf "% 8.2f % 6.4e" !val_nn val_loss in
 
         Loss.( { s_wrk; s_val; has_converged = false; val_loss; } )
 
       else
         raise (EmptyFold (Printf.sprintf "wrk_nn=%0.2f val_nn=%0.2f" !wrk_nn !val_nn))
+
+    method metrics_header = Printf.sprintf "%5s % 11s" "n" "loss"
 
     method mean_model ~in_set ~out_set : float =
       let sum_y = ref 0.0 in

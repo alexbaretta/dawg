@@ -935,18 +935,22 @@ class splitter
 
         let has_converged = val_frac_misclassified = 0.0 in
 
-        let wrk_t = wrk_tp +. wrk_tn in
-        let s_wrk = Printf.sprintf "% 8.2f %.4e %.4e   %.4e %.4e %.4e %.4e"
+        let wrk_t  = wrk_tp +. wrk_tn in
+        let s_wrk  = Printf.sprintf "% 8.2f % 6.4e % 6.4e   %5.4e %5.4e %5.4e %5.4e"
             wrk_n wrk_loss wrk_t wrk_tp wrk_tn wrk_fp wrk_fn in
 
-        let val_t = val_tp +. val_tn in
-        let s_val = Printf.sprintf "% 8.2f %.4e %.4e   %.4e %.4e %.4e %.4e"
+        let val_t  = val_tp +. val_tn in
+        let s_val  = Printf.sprintf "% 8.2f % 6.4e % 6.4e   %5.4e %5.4e %5.4e %5.4e"
             val_n val_loss val_t val_tp val_tn val_fp val_fn in
 
         Loss.( {s_wrk; s_val; has_converged; val_loss} )
 
       else
         raise EmptyFold
+
+    method metrics_header =
+      Printf.sprintf "%5s % 11s % 11s   % 10s % 10s % 10s % 10s"
+        "n" "loss" "accu" "tp" "tn" "fp" "fn"
 
     method mean_model ~in_set ~out_set : float =
       assert (Array.length in_set = n_rows);

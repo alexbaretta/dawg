@@ -22,6 +22,7 @@ class type splitter = object
   method boost : float array -> [ `NaN of int | `Ok ]
   method update_with_subset : bool array -> unit
   method mean_model : in_set:bool array -> out_set:bool array -> float
+  method metrics_header : string
   method metrics : in_set:bool array -> out_set:bool array -> metrics
   method num_observations : int
   method write_model : Model_t.c_folds -> Model_t.feature list -> Bi_outbuf.t ->

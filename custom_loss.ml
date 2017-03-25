@@ -571,6 +571,9 @@ class splitter
       else
         raise (EmptyFold (Printf.sprintf "wrk_nn=%0.2f val_nn=%0.2f" !wrk_nn !val_nn))
 
+    method metrics_header =
+      Printf.sprintf "% 5s % 11s % 11s % 11s%%" "n" "obj" "delta" "delta"
+
     method mean_model ~in_set ~out_set : float =
       match force_mean with
         | Some gamma0 ->
