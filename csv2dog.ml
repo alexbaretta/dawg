@@ -169,26 +169,21 @@ let write_cells_to_work_dir work_dir header next_row config =
       cells.( c ) <- cell;
       cells, mcore, c + 1, f
     )
-    else
-      let success, mcore = Mcore.reap mcore in
-      if not success then (
-        Utils.epr "[ERROR] one sorting task failed\n%!";
-        exit 1
-      );
-      let mcore = Mcore.spawn mcore (fun () ->
+    else (
+      Mcore.spawn mcore (fun () ->
         Printf.printf "[STRT] sorting files=%d cells=%d ... \n%!" f c;
         Array.fast_sort compare_cells cells;
         Printf.printf "[DONE] sorting files=%d cells=%d\n%!" f c;
         write_cells_to_file work_dir f cells;
-      ) ()
-      in
+      ) ();
       let cells = Array.make config.max_cells_in_mem dummy_cell in
       cells.(0) <- cell;
       cells, mcore, 1, f + 1
+    )
   in
 
   let rec loop ~cells ~mcore ~cell_row ~f ~c prev_dense_row_length_opt =
-    if cell_row mod 1000 = 0 then
+    if cell_row mod 10000 = 0 then
       Printf.printf "files=%d rows=%d\n%!" f cell_row;
 
     match next_row () with
@@ -255,7 +250,7 @@ let write_cells_to_work_dir work_dir header next_row config =
 
   in
   let cells = Array.make config.max_cells_in_mem dummy_cell in
-  let mcore = Mcore.create_mprocess () in
+  let mcore = Mcore.create_mprocess 2 in
   let result = loop ~cells ~mcore ~cell_row:0 ~f:0 ~c:0 header_length_opt in
   let success = Mcore.sync mcore in
   if not success then (
