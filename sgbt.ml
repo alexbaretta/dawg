@@ -322,7 +322,7 @@ let learn_with_fold conf t fold_id initial_learning_rate deadline =
   let s_head = t.splitter#metrics_header in
 
   Utils.pr "% 15s fold % 3d           wrk %s   val %s\n%!" "" fold_id s_head s_head;
-  Utils.pr "% 15s mean % 3d          %s  %s\n%!" "" fold_id s_wrk s_val;
+  Utils.pr "    % 6.4e mean % 3d          %s  %s\n%!" mean_model fold_id s_wrk s_val;
 
   let new_random_seed = [| Random.int 10_000 |] in
 
