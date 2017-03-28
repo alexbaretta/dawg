@@ -28,12 +28,12 @@ module Aggregate = struct
     sum_l : float array; (* loss *)
   }
 
-  let sign x = copysign 1.0 x
+  let sign ~n ~z = copysign n z
 
   let update t ~value ~n ~z ~l =
     t.sum_n.(value) <- t.sum_n.(value) +. n;
     t.sum_z.(value) <- t.sum_z.(value) +. n *. z;
-    t.sum_s.(value) <- t.sum_z.(value) +. n *. sign z;
+    t.sum_s.(value) <- t.sum_z.(value) +. sign ~n ~z;
     t.sum_l.(value) <- t.sum_l.(value) +. n *. l
 
   let create cardinality = {
@@ -73,11 +73,11 @@ class splitter
   let l = Array.make n_rows 0.0 in
   let f = Array.make n_rows 0.0 in
 
-  let n1 = n_rows + 1 in
+  (* let n1 = n_rows + 1 in *)
 
-  let cum_z = Array.make n1 0.0 in
-  let cum_l = Array.make n1 0.0 in
-  let cum_n = Array.make n1 0.0 in
+  (* let cum_z = Array.make n1 0.0 in *)
+  (* let cum_l = Array.make n1 0.0 in *)
+  (* let cum_n = Array.make n1 0.0 in *)
 
   let in_subset = ref [| |] in
 
@@ -116,9 +116,9 @@ class splitter
       Array.fill_all z 0.0;
       Array.fill_all l 0.0;
       Array.fill_all f 0.0;
-      Array.fill_all cum_z 0.0;
-      Array.fill_all cum_l 0.0;
-      Array.fill_all cum_n 0.0;
+      (* array.fill_all cum_z 0.0; *)
+      (* Array.fill_all cum_l 0.0; *)
+      (* Array.fill_all cum_n 0.0; *)
       in_subset := [| |]
 
     (* update [f] and [zwl] based on [gamma] *)
@@ -150,22 +150,22 @@ class splitter
     method update_with_subset in_subset_ =
       (* Utils.epr "[DEBUG] update_with_subset\n%!"; *)
       in_subset := in_subset_;
-      cum_z.(0) <- 0.0;
-      cum_l.(0) <- 0.0;
-      cum_n.(0) <- 0.0;
-      for i = 1 to n_rows do
-        let i1 = i - 1 in
-        if in_subset_.(i1) then (
-          cum_z.(i) <- z.(i1) +. cum_z.(i1);
-          cum_l.(i) <- l.(i1) +. cum_l.(i1);
-          cum_n.(i) <- weights.(i1) +. cum_n.(i1)
-        )
-        else (
-          cum_z.(i) <- cum_z.(i1);
-          cum_l.(i) <- cum_l.(i1);
-          cum_n.(i) <- cum_n.(i1)
-        )
-      done
+      (* cum_z.(0) <- 0.0; *)
+      (* cum_l.(0) <- 0.0; *)
+      (* cum_n.(0) <- 0.0; *)
+      (* for i = 1 to n_rows do *)
+      (*   let i1 = i - 1 in *)
+      (*   if in_subset_.(i1) then ( *)
+      (*     cum_z.(i) <- z.(i1) +. cum_z.(i1); *)
+      (*     cum_l.(i) <- l.(i1) +. cum_l.(i1); *)
+      (*     cum_n.(i) <- weights.(i1) +. cum_n.(i1) *)
+      (*   ) *)
+      (*   else ( *)
+      (*     cum_z.(i) <- cum_z.(i1); *)
+      (*     cum_l.(i) <- cum_l.(i1); *)
+      (*     cum_n.(i) <- cum_n.(i1) *)
+      (*   ) *)
+      (* done *)
 
     method best_split
              (monotonicity : Dog_t.monotonicity)

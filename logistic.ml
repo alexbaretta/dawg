@@ -460,37 +460,37 @@ class splitter
   let l = Array.make n_rows 0.0 in
   let f = Array.make n_rows 0.0 in
 
-  let n1 = n_rows + 1 in
+  (* let n1 = n_rows + 1 in *)
 
-  let cum_z = Array.make n1 0.0 in
-  let cum_w = Array.make n1 0.0 in
-  let cum_l = Array.make n1 0.0 in
-  let cum_n = Array.make n1 0.0 in
+  (* let cum_z = Array.make n1 0.0 in *)
+  (* let cum_w = Array.make n1 0.0 in *)
+  (* let cum_l = Array.make n1 0.0 in *)
+  (* let cum_n = Array.make n1 0.0 in *)
 
   let in_subset = ref [| |] in
 
-  let update_cum () =
-    cum_z.(0) <- 0.0;
-    cum_w.(0) <- 0.0;
-    cum_l.(0) <- 0.0;
-    cum_n.(0) <- 0.0;
+  (* let update_cum () = *)
+  (*   cum_z.(0) <- 0.0; *)
+  (*   cum_w.(0) <- 0.0; *)
+  (*   cum_l.(0) <- 0.0; *)
+  (*   cum_n.(0) <- 0.0; *)
 
-    for i = 1 to n_rows do
-      let i1 = i - 1 in
-      if !in_subset.(i1) then (
-        cum_z.(i) <- z.(i1) +. cum_z.(i1);
-        cum_w.(i) <- w.(i1) +. cum_w.(i1);
-        cum_l.(i) <- l.(i1) +. cum_l.(i1);
-        cum_n.(i) <- weights.(i1) +.  cum_n.(i1)
-      )
-      else (
-        cum_z.(i) <- cum_z.(i1);
-        cum_w.(i) <- cum_w.(i1);
-        cum_l.(i) <- cum_l.(i1);
-        cum_n.(i) <- cum_n.(i1)
-      )
-    done
-  in
+  (*   for i = 1 to n_rows do *)
+  (*     let i1 = i - 1 in *)
+  (*     if !in_subset.(i1) then ( *)
+  (*       cum_z.(i) <- z.(i1) +. cum_z.(i1); *)
+  (*       cum_w.(i) <- w.(i1) +. cum_w.(i1); *)
+  (*       cum_l.(i) <- l.(i1) +. cum_l.(i1); *)
+  (*       cum_n.(i) <- weights.(i1) +.  cum_n.(i1) *)
+  (*     ) *)
+  (*     else ( *)
+  (*       cum_z.(i) <- cum_z.(i1); *)
+  (*       cum_w.(i) <- cum_w.(i1); *)
+  (*       cum_l.(i) <- cum_l.(i1); *)
+  (*       cum_n.(i) <- cum_n.(i1) *)
+  (*     ) *)
+  (*   done *)
+  (* in *)
 
   let agg_of_vector cardinality vector =
     let in_subset_ = !in_subset in
@@ -529,16 +529,16 @@ class splitter
         w.(i) <- 0.0;
         l.(i) <- 0.0;
         f.(i) <- 0.0;
-        cum_z.(i) <- 0.0;
-        cum_w.(i) <- 0.0;
-        cum_l.(i) <- 0.0;
-        cum_n.(i) <- 0.0;
+        (* cum_z.(i) <- 0.0; *)
+        (* cum_w.(i) <- 0.0; *)
+        (* cum_l.(i) <- 0.0; *)
+        (* cum_n.(i) <- 0.0; *)
       done;
       (* cum's have one more element *)
-      cum_z.(n_rows) <- 0.0;
-      cum_w.(n_rows) <- 0.0;
-      cum_l.(n_rows) <- 0.0;
-      cum_n.(n_rows) <- 0.0;
+      (* cum_z.(n_rows) <- 0.0; *)
+      (* cum_w.(n_rows) <- 0.0; *)
+      (* cum_l.(n_rows) <- 0.0; *)
+      (* cum_n.(n_rows) <- 0.0; *)
       in_subset := [| |]
 
     (* update [f] and [zwl] based on [gamma] *)
@@ -570,8 +570,8 @@ class splitter
         | None -> `Ok
 
     method update_with_subset in_subset_ =
-      in_subset := in_subset_;
-      update_cum ()
+      in_subset := in_subset_
+      (* update_cum () *)
 
     method best_split
              (monotonicity : Dog_t.monotonicity)

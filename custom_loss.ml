@@ -40,20 +40,34 @@ module Aggregate = struct
     sum_zplus : float array;
 
     (* Left pseudo-response per bin: aggregate delta-loss for a negative unit increment in f *)
+    sum_sminus : float array;
+
+    (* Right sign(pseudo-response) per bin: median direction of pseudo-response *)
+    sum_splus : float array;
+
+    (* Left sign(pseudo-response) per bin: median direction of pseudo-response *)
     sum_zminus : float array;
+
+    (* We want zplus*splus > 0 in order to trust a pseudo-response *)
   }
+
+  let sign ~n ~z = copysign n z
 
   let update t ~value ~n ~loss ~zplus ~zminus =
     t.sum_n.(value) <- t.sum_n.(value) +. n;
     t.sum_loss.(value)   <- t.sum_loss.(value) +. n *. loss;
     t.sum_zplus.(value)  <- t.sum_zplus.(value)  +. n *. zplus;
-    t.sum_zminus.(value) <- t.sum_zminus.(value) +. n *. zminus
+    t.sum_zminus.(value) <- t.sum_zminus.(value) +. n *. zminus;
+    t.sum_splus.(value)  <- t.sum_splus.(value)  +. sign ~n ~z:zplus;
+    t.sum_sminus.(value) <- t.sum_sminus.(value) +. sign ~n ~z:zminus
 
   let create cardinality = {
     sum_n = Array.make cardinality 0.0;
     sum_loss = Array.make cardinality 0.0;
     sum_zplus  = Array.make cardinality 0.0;
     sum_zminus = Array.make cardinality 0.0;
+    sum_splus  = Array.make cardinality 0.0;
+    sum_sminus = Array.make cardinality 0.0;
   }
 
 end
@@ -114,19 +128,19 @@ class splitter
   (* row-wise value of the left pseudo-response: delta-loss for negative unit increment of *)
   let zminus = Array.make n_rows 0.0 in
 
-  let n1 = n_rows + 1 in
+  (* let n1 = n_rows + 1 in *)
 
-  (* cumulative observation weight *)
-  let cum_n = Array.make n1 0.0 in
+  (* (\* cumulative observation weight *\) *)
+  (* let cum_n = Array.make n1 0.0 in *)
 
-  (* cumulative value of the loss function computed on f *)
-  let cum_loss = Array.make n1 0.0 in
+  (* (\* cumulative value of the loss function computed on f *\) *)
+  (* let cum_loss = Array.make n1 0.0 in *)
 
-  (* cumulative value of the right pseudo-response *)
-  let cum_zplus  = Array.make n1 0.0 in
+  (* (\* cumulative value of the right pseudo-response *\) *)
+  (* let cum_zplus  = Array.make n1 0.0 in *)
 
-  (* cumulative value of the left pseudo-response *)
-  let cum_zminus = Array.make n1 0.0 in
+  (* (\* cumulative value of the left pseudo-response *\) *)
+  (* let cum_zminus = Array.make n1 0.0 in *)
 
   let in_subset = ref [| |] in
 
@@ -174,10 +188,10 @@ class splitter
       Array.fill_all loss 0.0;
       Array.fill_all zplus 0.0;
       Array.fill_all zminus 0.0;
-      Array.fill_all cum_loss 0.0;
-      Array.fill_all cum_zplus 0.0;
-      Array.fill_all cum_zminus 0.0;
-      Array.fill_all cum_n 0.0;
+      (* Array.fill_all cum_loss 0.0; *)
+      (* Array.fill_all cum_zplus 0.0; *)
+      (* Array.fill_all cum_zminus 0.0; *)
+      (* Array.fill_all cum_n 0.0; *)
       in_subset := [| |]
 
     (* update [f] and [zwl] based on [gamma] *)
@@ -211,26 +225,26 @@ class splitter
       `Ok
 
     method update_with_subset in_subset_ =
-      in_subset := in_subset_;
-      cum_loss.(0) <- 0.0;
-      cum_zplus.(0) <- 0.0;
-      cum_zminus.(0) <- 0.0;
-      cum_n.(0) <- 0.0;
-      for i = 1 to n_rows do
-        let i1 = i - 1 in
-        if in_subset_.(i1) then (
-          cum_loss.(i)   <- loss.(i1) +. cum_loss.(i1);
-          cum_zplus.(i)  <- zplus.(i1) +. cum_zplus.(i1);
-          cum_zminus.(i) <- zminus.(i1) +. cum_zminus.(i1);
-          cum_n.(i)      <- weights.(i1) +. cum_n.(i1)
-        )
-        else (
-          cum_loss.(i)   <- cum_loss.(i1);
-          cum_zplus.(i)  <- cum_zplus.(i1);
-          cum_zminus.(i) <- cum_zminus.(i1);
-          cum_n.(i)      <- cum_n.(i1)
-        )
-      done
+      (* cum_loss.(0) <- 0.0; *)
+      (* cum_zplus.(0) <- 0.0; *)
+      (* cum_zminus.(0) <- 0.0; *)
+      (* cum_n.(0) <- 0.0; *)
+      (* for i = 1 to n_rows do *)
+      (*   let i1 = i - 1 in *)
+      (*   if in_subset_.(i1) then ( *)
+      (*     cum_loss.(i)   <- loss.(i1) +. cum_loss.(i1); *)
+      (*     cum_zplus.(i)  <- zplus.(i1) +. cum_zplus.(i1); *)
+      (*     cum_zminus.(i) <- zminus.(i1) +. cum_zminus.(i1); *)
+      (*     cum_n.(i)      <- weights.(i1) +. cum_n.(i1) *)
+      (*   ) *)
+      (*   else ( *)
+      (*     cum_loss.(i)   <- cum_loss.(i1); *)
+      (*     cum_zplus.(i)  <- cum_zplus.(i1); *)
+      (*     cum_zminus.(i) <- cum_zminus.(i1); *)
+      (*     cum_n.(i)      <- cum_n.(i1) *)
+      (*   ) *)
+      (* done; *)
+      in_subset := in_subset_
 
     method best_split
              (monotonicity : Dog_t.monotonicity)
