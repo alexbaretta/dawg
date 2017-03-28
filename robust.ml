@@ -19,21 +19,27 @@ type model = Model_t.l_regression_model
 let string_of_metrics { n; loss } =
   Printf.sprintf "% 6.2f %.4e" n loss
 
+
 module Aggregate = struct
   type t = {
-    sum_n : float array;
-    sum_z : float array;
-    sum_l : float array;
+    sum_n : float array; (* weight *)
+    sum_z : float array; (* pseudo-response *)
+    sum_s : float array; (* sign(z) *)
+    sum_l : float array; (* loss *)
   }
+
+  let sign x = copysign 1.0 x
 
   let update t ~value ~n ~z ~l =
     t.sum_n.(value) <- t.sum_n.(value) +. n;
     t.sum_z.(value) <- t.sum_z.(value) +. n *. z;
+    t.sum_s.(value) <- t.sum_z.(value) +. n *. sign z;
     t.sum_l.(value) <- t.sum_l.(value) +. n *. l
 
   let create cardinality = {
     sum_n = Array.make cardinality 0.0;
     sum_z = Array.make cardinality 0.0;
+    sum_s = Array.make cardinality 0.0;
     sum_l = Array.make cardinality 0.0;
   }
 
@@ -194,12 +200,15 @@ class splitter
       let right = Aggregate.create cardinality in
       let agg_sum_n = agg.sum_n in
       let agg_sum_z = agg.sum_z in
+      let agg_sum_s = agg.sum_s in
       let agg_sum_l = agg.sum_l in
       let left_sum_n = left.sum_n in
       let left_sum_z = left.sum_z in
+      let left_sum_s = left.sum_s in
       let left_sum_l = left.sum_l in
       let right_sum_n = right.sum_n in
       let right_sum_z = right.sum_z in
+      let right_sum_s = right.sum_s in
       let right_sum_l = right.sum_l in
 
       match kind with
@@ -240,10 +249,12 @@ class splitter
           (* initialize the cumulative sums from left to right *)
           left_sum_n.(k_0) <- agg_sum_n.(k_0);
           left_sum_z.(k_0) <- agg_sum_z.(k_0);
+          left_sum_s.(k_0) <- agg_sum_s.(k_0);
           left_sum_l.(k_0) <- agg_sum_l.(k_0);
 
           right_sum_n.(k_last) <- agg_sum_n.(k_last);
           right_sum_z.(k_last) <- agg_sum_z.(k_last);
+          right_sum_s.(k_last) <- agg_sum_s.(k_last);
           right_sum_l.(k_last) <- agg_sum_l.(k_last);
 
           (* compute the cumulative sums from left to right *)
@@ -254,6 +265,7 @@ class splitter
 
             left_sum_n.(lk) <- left_sum_n.(lk_1) +. agg_sum_n.(lk);
             left_sum_z.(lk) <- left_sum_z.(lk_1) +. agg_sum_z.(lk);
+            left_sum_s.(lk) <- left_sum_s.(lk_1) +. agg_sum_s.(lk);
             left_sum_l.(lk) <- left_sum_l.(lk_1) +. agg_sum_l.(lk);
 
             let rs = cardinality - ls - 1 in
@@ -262,6 +274,7 @@ class splitter
 
             right_sum_n.(rk) <- right_sum_n.(rk_1) +. agg_sum_n.(rk);
             right_sum_z.(rk) <- right_sum_z.(rk_1) +. agg_sum_z.(rk);
+            right_sum_s.(rk) <- right_sum_s.(rk_1) +. agg_sum_s.(rk);
             right_sum_l.(rk) <- right_sum_l.(rk_1) +. agg_sum_l.(rk);
 
           done;
@@ -285,6 +298,9 @@ class splitter
 
               let left_gamma  = left_sum_z.(k)    /. left_n  in
               let right_gamma = right_sum_z.(k_1) /. right_n in
+
+              let left_gamma = if left_gamma *. left_sum_s.(k) > 0.0 then left_gamma else 0.0 in
+              let right_gamma = if right_gamma *. right_sum_s.(k+1) > 0.0 then right_gamma else 0.0 in
 
               let left_gamma, right_gamma =
                 Feat_utils.apply_max_gamma_opt ~max_gamma_opt left_gamma right_gamma
@@ -357,10 +373,12 @@ class splitter
 
           let _ : float = Utils.Array.float_cumsum_left agg_sum_n left_sum_n in
           let _ : float = Utils.Array.float_cumsum_left agg_sum_z left_sum_z in
+          let _ : float = Utils.Array.float_cumsum_left agg_sum_s left_sum_s in
           let _ : float = Utils.Array.float_cumsum_left agg_sum_l left_sum_l in
 
           let _ : float = Utils.Array.float_cumsum_right agg_sum_n right_sum_n in
           let _ : float = Utils.Array.float_cumsum_right agg_sum_z right_sum_z in
+          let _ : float = Utils.Array.float_cumsum_right agg_sum_s right_sum_s in
           let _ : float = Utils.Array.float_cumsum_right agg_sum_l right_sum_l in
 
           let best_split = ref None in
@@ -378,6 +396,9 @@ class splitter
 
               let left_gamma  = left_sum_z.(k)    /. left_n  in
               let right_gamma = right_sum_z.(k+1) /. right_n in
+
+              let left_gamma = if left_gamma *. left_sum_s.(k) > 0.0 then left_gamma else 0.0 in
+              let right_gamma = if right_gamma *. right_sum_s.(k+1) > 0.0 then right_gamma else 0.0 in
 
               let left_gamma, right_gamma =
                 Feat_utils.apply_max_gamma_opt ~max_gamma_opt left_gamma right_gamma
