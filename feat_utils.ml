@@ -298,7 +298,6 @@ let descr_of_cat_feature feature =
         | Some name -> `Name name
         | None -> `Id id
 
-
 let iter_ord_feature f y_feature =
   let open Dog_t in
   let { o_vector; o_breakpoints; o_cardinality } = y_feature in
@@ -342,6 +341,45 @@ let iter_ord_feature f y_feature =
           )
     )
 
+let iter_ord_by_level f y_feature =
+  let open Dog_t in
+  let { o_vector; o_breakpoints; o_cardinality } = y_feature in
+  match o_vector with
+    | `RLE vec -> (
+      match o_breakpoints with
+        | `Float breakpoints ->
+          Rlevec.iter vec (
+            fun ~index ~length ~value ->
+              for i = index to index + length - 1 do
+                f i value
+              done
+          )
+
+        | `Int breakpoints ->
+          Rlevec.iter vec (
+            fun ~index ~length ~value ->
+              for i = index to index + length - 1 do
+                f i value
+              done
+          )
+    )
+
+    | `Dense vec -> (
+      let width = Utils.num_bytes o_cardinality in
+      match o_breakpoints with
+        | `Float breakpoints ->
+          Dense.iter ~width vec (
+            fun ~index ~value ->
+              f index value
+          )
+
+        | `Int breakpoints ->
+          Dense.iter ~width vec (
+            fun ~index ~value ->
+              f index value
+          )
+    )
+
 let repr_array_of_ord_feature n_obs y_feature =
   let open Dog_t in
   let y = Array.make n_obs nan in
@@ -373,3 +411,10 @@ let repr_table_of_ord_features ~scale n_obs y_features =
     ) feature
   ) y_features;
   ys
+
+let repr_elements_of_ord_feature y_feature =
+  let open Dog_t in
+  let { o_vector; o_breakpoints; o_cardinality } = y_feature in
+  match o_breakpoints with
+    | `Float breakpoints -> breakpoints.repr_elements
+    | `Int breakpoints -> Array.map float breakpoints.repr_elements

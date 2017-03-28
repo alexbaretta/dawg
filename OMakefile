@@ -87,6 +87,7 @@ FILES[] =
   bi_metrics
   roc
   square
+  robust
   gen_code
   gen_python
   gen_c
@@ -108,7 +109,7 @@ section
   utils.cmo utils.cmi utils.cmx utils.o : utils.ml utils.mli
 
 TARGETS = \
-   $(OCamlProgram dawg-rl, $(FILES) ) \
+   $(OCamlProgram dawg-robust, $(FILES) ) \
    $(OCamlProgram t_rlevec , test_rlevec $(FILES) ) \
    $(OCamlProgram t_sm , test_stream_merge stream_merge heap ) \
    $(OCamlProgram t_rle, test_rle rle utils ) \

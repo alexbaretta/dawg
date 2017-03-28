@@ -1,5 +1,5 @@
 type optimization = [ `Minimize | `Maximize ]
-type loss_type = [ `Logistic | `Square | `Custom of optimization ]
+type loss_type = [ `Logistic | `Square | `Robust | `Custom of optimization ]
 
 type feature_monotonicity = (Feat_utils.feature_descr * Dog_t.monotonicity) list
 type conf = {

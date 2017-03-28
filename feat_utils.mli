@@ -35,8 +35,11 @@ val descr_of_cat_feature : ('a, 'b) cat_feature -> feature_descr
 val descr_of_ord_feature : ('a, 'b) ord_feature -> feature_descr
 
 val iter_ord_feature : (int -> float -> unit) -> (Vec.t, Vec.t) Dog_t.ord_feature -> unit
+val iter_ord_by_level : (int -> int -> unit) -> (Vec.t, Vec.t) Dog_t.ord_feature -> unit
 val repr_array_of_ord_feature : int -> (Vec.t, Vec.t) Dog_t.ord_feature -> float array
 
 (* ys is a column-major matrix: we want every row to be contiguous in memory *)
 val repr_table_of_ord_features:
   scale:float -> int -> (Vec.t, Vec.t) Dog_t.ord_feature list -> float array array
+
+val repr_elements_of_ord_feature: ('a, 'b) Dog_t.ord_feature -> float array

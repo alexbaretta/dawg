@@ -5,7 +5,7 @@ module IntSet = Utils.IntSet
 let random_seed = [| 9271 ; 12074; 3; 12921; 92; 763 |]
 
 type optimization = [ `Minimize | `Maximize ]
-type loss_type = [ `Logistic | `Square | `Custom of optimization ]
+type loss_type = [ `Logistic | `Square | `Robust | `Custom of optimization ]
 
 type feature_monotonicity = (Feat_utils.feature_descr * Dog_t.monotonicity) list
 type conf = {
@@ -630,6 +630,7 @@ let learn conf =
           ~n_rows
           ~num_observations
           ~min_observations_per_node:conf.min_observations_per_node
+
       | `Square ->
         let y_feature = match a_y_features with
           | [] ->
@@ -637,11 +638,31 @@ let learn conf =
             exit 1
           | [y_feature] -> y_feature
           | _ :: _ :: _ ->
-            Utils.epr "[ERROR] too many features for squre error model";
+            Utils.epr "[ERROR] too many features for square error model";
             Utils.epr "[ERROR] currently square error models support only 1 target";
             exit 1
         in
         new Square.splitter
+          ~optimize
+          ~max_gamma_opt:conf.max_gamma_opt
+          ~weights
+          ~y_feature
+          ~n_rows
+          ~num_observations
+          ~min_observations_per_node:conf.min_observations_per_node
+
+      | `Robust ->
+        let y_feature = match a_y_features with
+          | [] ->
+            Utils.epr "[ERROR] no target feature for robust mean model";
+            exit 1
+          | [y_feature] -> y_feature
+          | _ :: _ :: _ ->
+            Utils.epr "[ERROR] too many features for robust mean model";
+            Utils.epr "[ERROR] currently robust mean models support only 1 target";
+            exit 1
+        in
+        new Robust.splitter
           ~optimize
           ~max_gamma_opt:conf.max_gamma_opt
           ~weights

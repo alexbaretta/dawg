@@ -218,6 +218,7 @@ let learn
     match loss_type_s with
       | "logistic"-> `Logistic
       | "square" -> `Square
+      | "robust" -> `Robust
       | "custom" | "custom-loss" -> `Custom `Minimize
       | "custom-gain" -> `Custom `Maximize
       | _ ->
