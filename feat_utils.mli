@@ -43,3 +43,5 @@ val repr_table_of_ord_features:
   scale:float -> int -> (Vec.t, Vec.t) Dog_t.ord_feature list -> float array array
 
 val repr_elements_of_ord_feature: ('a, 'b) Dog_t.ord_feature -> float array
+val histogram : (Vec.t, Vec.t) Dog_t.ord_feature ->
+  in_set:bool array -> weights:float array -> float Utils.Stats.histogram

@@ -279,4 +279,133 @@ module Array = struct
 
   let fill_all a x = fill a 0 (Array.length a) x
 
+  let foldmap_left f init a =
+    let l = length a in
+    if l = 0 then
+      [||]
+    else
+      let init = f init a.(0) in
+      let b = make l init in
+      let rec loop i accu =
+        if i < l then
+          let accu = f accu a.(i) in
+          b.(i) <- accu;
+          loop (succ i) accu
+        else
+          b
+      in
+      loop 1 init
+
+  let foldmap_right f a init =
+    let l = length a in
+    if l = 0 then
+      [||]
+    else
+      let init = f a.(l-1) init in
+      let b = make l init in
+      let rec loop i accu =
+        if i >= 0 then
+          let accu = f a.(i) accu in
+          b.(i) <- accu;
+          loop (pred i) accu
+        else
+          b
+      in
+      loop (l - 2) init
+
+  let foldmapi_left f init a =
+    let l = length a in
+    if l = 0 then
+      [||]
+    else
+      let init = f 0 init a.(0) in
+      let b = make l init in
+      let rec loop i accu =
+        if i < l then
+          let accu = f i accu a.(i) in
+          b.(i) <- accu;
+          loop (succ i) accu
+        else
+          b
+      in
+      loop 1 init
+
+  let foldmapi_right f a init =
+    let l = length a in
+    if l = 0 then
+      [||]
+    else
+      let start = l - 1 in
+      let init = f start a.(start) init in
+      let b = make l init in
+      let rec loop i accu =
+        if i >= 0 then
+          let accu = f i a.(i) accu in
+          b.(i) <- accu;
+          loop (pred i) accu
+        else
+          b
+      in
+      loop (start - 1) init
+end
+
+module Stats = struct
+  type 'a histogram = {
+    repr_elements : 'a array;
+    hist_array : float array;
+    sum_n : float;
+  }
+
+  let rank_statistic histogram r =
+    let { hist_array; repr_elements; sum_n } = histogram in
+    let rank_w = r *. sum_n in
+    let rec find_rank_statistic k prev_cum_w =
+      assert (prev_cum_w < rank_w);
+      let delta_w = hist_array.(k) in
+      let cum_w = prev_cum_w +. delta_w in
+      let excess_w = cum_w -. rank_w in
+      if excess_w >= 0.0 then
+        let repr = repr_elements.(k) in
+        if k = 0 then
+          repr
+        else
+          let prev_repr = repr_elements.(k-1) in
+          let result = prev_repr +. (repr -. prev_repr) *. (delta_w -. excess_w) /. delta_w in
+          epr "[DEBUG] rank_statistic: rank_w=%f, k=%d, repr=%f, prev=%f, excess_w=%f -> %f\n%!"
+            rank_w k repr prev_repr excess_w result;
+          result
+      else
+        find_rank_statistic (succ k) cum_w
+    in
+    find_rank_statistic 0 r
+
+  (* let rank_statistics histogram rs = *)
+  (*   let { hist_array; repr_elements; sum_n } = histogram in *)
+  (*   let rank_w = r *. sum_n in *)
+  (*   let rec find_rank_statistic k prev_cum_w = *)
+  (*     assert (prev_cum_w < rank_w); *)
+  (*     let delta_w = hist_array.(k) in *)
+  (*     let cum_w = prev_cum_w +. delta_w in *)
+  (*     let excess_w = cum_w -. rank_w in *)
+  (*     if excess_w >= 0.0 then *)
+  (*       let repr = repr_elements.(k) in *)
+  (*       if k = 0 then *)
+  (*         repr *)
+  (*       else *)
+  (*         let prev_repr = repr_elements.(k-1) in *)
+  (*         let result = prev_repr +. (repr -. prev_repr) *. (delta_w -. excess_w) /. delta_w in *)
+  (*         epr "[DEBUG] rank_statistic: rank_w=%f, k=%d, repr=%f, prev=%f, excess_w=%f -> %f\n%!" *)
+  (*           rank_w k repr prev_repr excess_w result; *)
+  (*         (result, k, prev_cum_w) *)
+  (*     else *)
+  (*       find_rank_statistic (succ k) cum_w *)
+  (*   in *)
+  (*   List.fold_left (fun *)
+
+  (*   let rec loop prev_k prev_cum_w rs = *)
+  (*     match rs with *)
+  (*     | [] -> [] *)
+  (*     | hd :: tl -> *)
+  (*       let (result, k, cum_w) = find_rank_statistic 0 0.0 *)
+
 end

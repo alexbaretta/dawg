@@ -254,7 +254,9 @@ let rec learn_with_fold_rate conf t iteration =
                 learn_with_fold_rate conf t (next_iteration ())
               in
 
-              if iteration.timeout () then (
+              if conf.max_trees_opt <> None then
+                continue_learning ()
+              else if iteration.timeout () then (
                 Utils.pr "timeout!\n";
                 let fold = {
                   Model_t.fold_id = iteration.fold_id;

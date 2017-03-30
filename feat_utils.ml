@@ -418,3 +418,18 @@ let repr_elements_of_ord_feature y_feature =
   match o_breakpoints with
     | `Float breakpoints -> breakpoints.repr_elements
     | `Int breakpoints -> Array.map float breakpoints.repr_elements
+
+let histogram ord_feature ~in_set ~weights =
+  let { o_cardinality } = ord_feature in
+  let nn = ref 0.0 in
+  let hist_array = Array.make o_cardinality 0.0 in
+  iter_ord_by_level (fun i level ->
+    if in_set.(i) then
+      let wi = weights.(i) in
+      hist_array.(level) <- hist_array.(level) +. wi;
+      Utils.add_to nn wi
+  ) ord_feature;
+
+  let repr_elements = repr_elements_of_ord_feature ord_feature in
+  let sum_n = !nn in
+  { Utils.Stats.repr_elements; hist_array; sum_n }

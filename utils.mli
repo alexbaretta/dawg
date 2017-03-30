@@ -77,4 +77,18 @@ module Array : sig
   val float_cumsum_left : float array -> float array -> float
   val float_cumsum_right : float array -> float array -> float
   val fill_all : 'a array -> 'a -> unit
+  val foldmap_left  : ('a -> 'b -> 'a) -> 'a -> 'b array -> 'a array
+  val foldmap_right : ('a -> 'b -> 'b) -> 'a array -> 'b -> 'b array
+
+  val foldmapi_left  : (int -> 'a -> 'b -> 'a) -> 'a -> 'b array -> 'a array
+  val foldmapi_right : (int -> 'a -> 'b -> 'b) -> 'a array -> 'b -> 'b array
+end
+
+module Stats : sig
+  type 'a histogram = {
+    repr_elements : 'a array;
+    hist_array : float array;
+    sum_n : float;
+  }
+  val rank_statistic : float histogram -> float -> float
 end

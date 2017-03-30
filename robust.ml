@@ -66,7 +66,6 @@ class splitter
     | `Ord ord_feature ->  ord_feature
     | `Cat cat -> raise (Loss.WrongTargetType (Feat_utils.descr_of_cat_feature cat))
   in
-  let { Dog_t.o_cardinality = y_cardinality; o_breakpoints = y_breakpoints } = y_ord in
   let y = Feat_utils.repr_array_of_ord_feature n_rows y_ord in
 
   let z = Array.make n_rows 0.0 in
@@ -499,36 +498,8 @@ class splitter
     method metrics_header = Printf.sprintf "%5s % 11s" "n" "loss"
 
     method mean_model ~in_set ~out_set : float =
-      let nn = ref 0.0 in
-      let hist_array = Array.make y_cardinality 0.0 in
-      Feat_utils.iter_ord_by_level (fun i level ->
-        if in_set.(i) then
-          let wi = weights.(i) in
-          hist_array.(level) <- hist_array.(level) +. wi;
-          Utils.add_to nn wi
-      ) y_ord;
-
-      let median_w = !nn /. 2.0 in
-      let repr_elements = Feat_utils.repr_elements_of_ord_feature y_ord in
-      let rec median k prev_cum_w =
-        assert (prev_cum_w < median_w);
-        let delta_w = hist_array.(k) in
-        let cum_w = prev_cum_w +. delta_w in
-        let excess_w = cum_w -. median_w in
-        if excess_w >= 0.0 then
-          let repr = repr_elements.(k) in
-          if k = 0 then
-            repr
-          else
-            let prev_repr = repr_elements.(k-1) in
-            let median = prev_repr +. (repr -. prev_repr) *. (delta_w -. excess_w) /. delta_w in
-            Utils.epr "[DEBUG] robust mean model: median_w=%f, k=%d, repr=%f, prev=%f, excess_w=%f, median=%f\n%!"
-              median_w k repr prev_repr excess_w median;
-            median
-        else
-          median (succ k) cum_w
-      in
-      let gamma0 = median 0 0.0 in
+      let histogram = Feat_utils.histogram y_ord ~in_set ~weights in
+      let gamma0 = Utils.Stats.rank_statistic histogram 0.5 in
       gamma0
 
     method write_model re_folds re_features out_buf =

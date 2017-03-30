@@ -8,6 +8,8 @@ external identity : 'a -> 'a = "%identity"
 let pr = Utils.pr
 let epr = Utils.epr
 
+let _0 = 0.0
+
 type metrics = {
   n : float;
   loss : float;
@@ -40,43 +42,45 @@ module Aggregate = struct
     sum_zplus : float array;
 
     (* Left pseudo-response per bin: aggregate delta-loss for a negative unit increment in f *)
-    sum_sminus : float array;
-
-    (* Right sign(pseudo-response) per bin: median direction of pseudo-response *)
-    sum_splus : float array;
-
-    (* Left sign(pseudo-response) per bin: median direction of pseudo-response *)
     sum_zminus : float array;
 
-    (* We want zplus*splus > 0 in order to trust a pseudo-response *)
+    (* Right pseudo-response squared per bin *)
+    sum_zplus2 : float array;
+
+    (* Left pseudo-response squared per bin *)
+    sum_zminus2 : float array;
+
+    (* (\* Right sign(pseudo-response) per bin: average sign of zplus *\) *)
+    (* sum_splus : float array; *)
+
+    (* (\* Left sign(pseudo-response) per bin: average sign of zminus *\) *)
+    (* sum_sminus : float array; *)
   }
 
-  let sign ~n ~z = copysign n z
+  let sign ~n:abs ~z:sign = copysign abs sign
 
   let update t ~value ~n ~loss ~zplus ~zminus =
     t.sum_n.(value) <- t.sum_n.(value) +. n;
     t.sum_loss.(value)   <- t.sum_loss.(value) +. n *. loss;
     t.sum_zplus.(value)  <- t.sum_zplus.(value)  +. n *. zplus;
     t.sum_zminus.(value) <- t.sum_zminus.(value) +. n *. zminus;
-    t.sum_splus.(value)  <- t.sum_splus.(value)  +. sign ~n ~z:zplus;
-    t.sum_sminus.(value) <- t.sum_sminus.(value) +. sign ~n ~z:zminus
+    t.sum_zplus2.(value)  <- t.sum_zplus2.(value)  +. n *. zplus *. zplus;
+    t.sum_zminus2.(value) <- t.sum_zminus2.(value) +. n *. zminus *. zminus
+    (* t.sum_splus.(value)  <- t.sum_splus.(value)  +. sign ~n ~z:zplus; *)
+    (* t.sum_sminus.(value) <- t.sum_sminus.(value) +. sign ~n ~z:zminus *)
 
   let create cardinality = {
-    sum_n = Array.make cardinality 0.0;
-    sum_loss = Array.make cardinality 0.0;
-    sum_zplus  = Array.make cardinality 0.0;
-    sum_zminus = Array.make cardinality 0.0;
-    sum_splus  = Array.make cardinality 0.0;
-    sum_sminus = Array.make cardinality 0.0;
+    sum_n = Array.make cardinality _0;
+    sum_loss = Array.make cardinality _0;
+    sum_zplus  = Array.make cardinality _0;
+    sum_zminus = Array.make cardinality _0;
+    sum_zplus2  = Array.make cardinality _0;
+    sum_zminus2 = Array.make cardinality _0;
+    (* sum_splus  = Array.make cardinality _0; *)
+    (* sum_sminus = Array.make cardinality _0; *)
   }
 
 end
-
-(* what would the sum_l be after the split is applied? *)
-let updated_loss ~gamma  ~sum_l ~sum_z ~sum_n =
-  (* TODO *)
-  assert false
-
 
 let y_repr_table optimization y_features n_rows =
   let open Dog_t in
@@ -103,8 +107,6 @@ class splitter
   ~min_observations_per_node
   ~force_mean
   =
-  let ys = y_repr_table optimization y_features n_rows in
-
   (* The decision function can only select from among the
      action values provided in the ys table *)
   let m = List.length y_features in
@@ -116,31 +118,33 @@ class splitter
     Utils.epr "[INFO] level % 3d: %s\n%!" i descr
   ) y_features in
 
+  let ys = y_repr_table optimization y_features n_rows in
+
   (* current index into the loss row vector *)
   let f = Array.make n_rows 0 in
 
   (* row-wise value of the loss function computed on f *)
-  let loss = Array.make n_rows 0.0 in
+  let loss = Array.make n_rows _0 in
 
   (* row-wise value of the right pseudo-response: delta-loss for positive unit increment of *)
-  let zplus  = Array.make n_rows 0.0 in
+  let zplus  = Array.make n_rows _0 in
 
   (* row-wise value of the left pseudo-response: delta-loss for negative unit increment of *)
-  let zminus = Array.make n_rows 0.0 in
+  let zminus = Array.make n_rows _0 in
 
   (* let n1 = n_rows + 1 in *)
 
   (* (\* cumulative observation weight *\) *)
-  (* let cum_n = Array.make n1 0.0 in *)
+  (* let cum_n = Array.make n1 _0 in *)
 
   (* (\* cumulative value of the loss function computed on f *\) *)
-  (* let cum_loss = Array.make n1 0.0 in *)
+  (* let cum_loss = Array.make n1 _0 in *)
 
   (* (\* cumulative value of the right pseudo-response *\) *)
-  (* let cum_zplus  = Array.make n1 0.0 in *)
+  (* let cum_zplus  = Array.make n1 _0 in *)
 
   (* (\* cumulative value of the left pseudo-response *\) *)
-  (* let cum_zminus = Array.make n1 0.0 in *)
+  (* let cum_zminus = Array.make n1 _0 in *)
 
   let in_subset = ref [| |] in
 
@@ -185,19 +189,19 @@ class splitter
 
     method clear =
       Array.fill_all f 0;
-      Array.fill_all loss 0.0;
-      Array.fill_all zplus 0.0;
-      Array.fill_all zminus 0.0;
-      (* Array.fill_all cum_loss 0.0; *)
-      (* Array.fill_all cum_zplus 0.0; *)
-      (* Array.fill_all cum_zminus 0.0; *)
-      (* Array.fill_all cum_n 0.0; *)
+      Array.fill_all loss _0;
+      Array.fill_all zplus _0;
+      Array.fill_all zminus _0;
+      (* Array.fill_all cum_loss _0; *)
+      (* Array.fill_all cum_zplus _0; *)
+      (* Array.fill_all cum_zminus _0; *)
+      (* Array.fill_all cum_n _0; *)
       in_subset := [| |]
 
     (* update [f] and [zwl] based on [gamma] *)
     (* We are no longer checking for NaNs here, so we have to do it later *)
     method boost gamma : [ `NaN of int | `Ok ] =
-      let savings = ref 0.0 in
+      let savings = ref _0 in
       Array.iteri (
         fun i gamma_if ->
           let gamma_i = int_of_float gamma_if in
@@ -225,10 +229,10 @@ class splitter
       `Ok
 
     method update_with_subset in_subset_ =
-      (* cum_loss.(0) <- 0.0; *)
-      (* cum_zplus.(0) <- 0.0; *)
-      (* cum_zminus.(0) <- 0.0; *)
-      (* cum_n.(0) <- 0.0; *)
+      (* cum_loss.(0) <- _0; *)
+      (* cum_zplus.(0) <- _0; *)
+      (* cum_zminus.(0) <- _0; *)
+      (* cum_n.(0) <- _0; *)
       (* for i = 1 to n_rows do *)
       (*   let i1 = i - 1 in *)
       (*   if in_subset_.(i1) then ( *)
@@ -275,21 +279,37 @@ class splitter
       if cardinality - 2 < 0 then None else
 
       (* let last = cardinality - 1 in *)
-      let left = Aggregate.create cardinality in
-      let right = Aggregate.create cardinality in
-      let agg_sum_n = agg.sum_n in
-      let agg_sum_zplus = agg.sum_zplus in
-      let agg_sum_zminus = agg.sum_zminus in
-      let agg_sum_loss = agg.sum_loss in
-      let left_sum_n = left.sum_n in
-      let left_sum_zplus = left.sum_zplus in
-      let left_sum_zminus = left.sum_zminus in
-      let left_sum_loss = left.sum_loss in
-      let right_sum_n = right.sum_n in
-      let right_sum_zplus = right.sum_zplus in
-      let right_sum_zminus = right.sum_zminus in
-      let right_sum_loss = right.sum_loss in
+      let agg_sum_n = agg.sum_n
+      and agg_sum_zplus = agg.sum_zplus
+      and agg_sum_zminus = agg.sum_zminus
+      and agg_sum_zplus2 = agg.sum_zplus2
+      and agg_sum_zminus2 = agg.sum_zminus2
+      (* and agg_sum_splus = agg.sum_splus *)
+      (* and agg_sum_sminus = agg.sum_sminus *)
+      and agg_sum_loss = agg.sum_loss
+      in
 
+      let left = Aggregate.create cardinality in
+      let left_sum_n = left.sum_n
+      and left_sum_zplus = left.sum_zplus
+      and left_sum_zminus = left.sum_zminus
+      and left_sum_zplus2 = left.sum_zplus2
+      and left_sum_zminus2 = left.sum_zminus2
+      (* and left_sum_splus = left.sum_splus *)
+      (* and left_sum_sminus = left.sum_sminus *)
+      and left_sum_loss = left.sum_loss
+      in
+
+      let right = Aggregate.create cardinality in
+      let right_sum_n = right.sum_n
+      and right_sum_zplus = right.sum_zplus
+      and right_sum_zminus = right.sum_zminus
+      and right_sum_zplus2 = right.sum_zplus2
+      and right_sum_zminus2 = right.sum_zminus2
+      (* and right_sum_splus = right.sum_splus *)
+      (* and right_sum_sminus = right.sum_sminus *)
+      and right_sum_loss = right.sum_loss
+      in
 
       match kind with
         | `Cat ->
@@ -323,11 +343,19 @@ class splitter
           left_sum_n.(k_0)      <- agg_sum_n.(k_0);
           left_sum_zplus.(k_0)  <- agg_sum_zplus.(k_0);
           left_sum_zminus.(k_0) <- agg_sum_zminus.(k_0);
+          left_sum_zplus2.(k_0)  <- agg_sum_zplus2.(k_0);
+          left_sum_zminus2.(k_0) <- agg_sum_zminus2.(k_0);
+          (* left_sum_splus.(k_0)  <- agg_sum_splus.(k_0); *)
+          (* left_sum_sminus.(k_0) <- agg_sum_sminus.(k_0); *)
           left_sum_loss.(k_0)   <- agg_sum_loss.(k_0);
 
           right_sum_n.(k_last)      <- agg_sum_n.(k_last);
           right_sum_zplus.(k_last)  <- agg_sum_zplus.(k_last);
           right_sum_zminus.(k_last) <- agg_sum_zminus.(k_last);
+          right_sum_zplus2.(k_last)  <- agg_sum_zplus2.(k_last);
+          right_sum_zminus2.(k_last) <- agg_sum_zminus2.(k_last);
+          (* right_sum_splus.(k_last)  <- agg_sum_splus.(k_last); *)
+          (* right_sum_sminus.(k_last) <- agg_sum_sminus.(k_last); *)
           right_sum_loss.(k_last)   <- agg_sum_loss.(k_last);
 
           (* compute the cumulative sums from left to right *)
@@ -339,6 +367,10 @@ class splitter
             left_sum_n.(lk)      <- left_sum_n.(lk_1) +. agg_sum_n.(lk);
             left_sum_zplus.(lk)  <- left_sum_zplus.(lk_1) +. agg_sum_zplus.(lk);
             left_sum_zminus.(lk) <- left_sum_zminus.(lk_1) +. agg_sum_zminus.(lk);
+            left_sum_zplus2.(lk)  <- left_sum_zplus2.(lk_1) +. agg_sum_zplus2.(lk);
+            left_sum_zminus2.(lk) <- left_sum_zminus2.(lk_1) +. agg_sum_zminus2.(lk);
+            (* left_sum_splus.(lk)  <- left_sum_splus.(lk_1) +. agg_sum_splus.(lk); *)
+            (* left_sum_sminus.(lk) <- left_sum_sminus.(lk_1) +. agg_sum_sminus.(lk); *)
             left_sum_loss.(lk)   <- left_sum_loss.(lk_1) +. agg_sum_loss.(lk);
 
             let rs = cardinality - ls - 1 in
@@ -348,8 +380,11 @@ class splitter
             right_sum_n.(rk)      <- right_sum_n.(rk_1) +. agg_sum_n.(rk);
             right_sum_zplus.(rk)  <- right_sum_zplus.(rk_1) +. agg_sum_zplus.(rk);
             right_sum_zminus.(rk) <- right_sum_zminus.(rk_1) +. agg_sum_zminus.(rk);
+            right_sum_zplus2.(rk)  <- right_sum_zplus2.(rk_1) +. agg_sum_zplus2.(rk);
+            right_sum_zminus2.(rk) <- right_sum_zminus2.(rk_1) +. agg_sum_zminus2.(rk);
+            (* right_sum_splus.(rk)  <- right_sum_splus.(rk_1) +. agg_sum_splus.(rk); *)
+            (* right_sum_sminus.(rk) <- right_sum_sminus.(rk_1) +. agg_sum_sminus.(rk); *)
             right_sum_loss.(rk)   <- right_sum_loss.(rk_1) +. agg_sum_loss.(rk);
-
           done;
 
           let best_split = ref None in
@@ -361,6 +396,7 @@ class splitter
             let k   = s_to_k.(s)   in
             let k_1 = s_to_k.(s+1) in
 
+            let n = right_sum_n.(0) in (* total weight of wrk set *)
             let left_n  = left_sum_n.(k)    in
             let right_n = right_sum_n.(k_1) in
 
@@ -372,39 +408,40 @@ class splitter
               let left_zplus = left_sum_zplus.(k) in
               let left_zminus = left_sum_zminus.(k) in
               let left_loss = left_sum_loss.(k) in
-              let left_gamma, left_z =
-                match compare left_zplus left_zminus with
-                  | -1 -> if left_zplus < 0.0 then 1, left_zplus else 0, 0.0
-                  | 1  -> if left_zminus < 0.0 then -1, left_zminus else 0, 0.0
-                  | 0  -> 0, 0.0
-                  | _ -> assert false
+              let left_gamma, left_z, left_z2 =
+                match compare left_zminus left_zplus with
+                  | 1 -> if left_zplus < _0 then 1, left_zplus, left_sum_zplus2.(k) else 0, _0, _0
+                  | _ -> if left_zminus < _0 then -1, left_zminus, left_sum_zminus2.(k) else 0, _0, _0
               in
 
-              let right_zplus = right_sum_zplus.(k) in
-              let right_zminus = right_sum_zminus.(k) in
-              let right_loss = right_sum_loss.(k) in
-              let right_gamma, right_z =
-                match compare right_zplus right_zminus with
-                  | -1 -> if right_zplus < 0.0 then 1, right_zplus else 0, 0.0
-                  | 1  -> if right_zminus < 0.0 then -1, right_zminus else 0, 0.0
-                  | 0  -> 0, 0.0
-                  | _ -> assert false
+              let right_zplus = right_sum_zplus.(k_1) in
+              let right_zminus = right_sum_zminus.(k_1) in
+              let right_loss = right_sum_loss.(k_1) in
+              let right_gamma, right_z, right_z2 =
+                match compare right_zminus right_zplus with
+                  | 1 -> if right_zplus < _0 then 1, right_zplus, right_sum_zplus2.(k_1) else 0, _0, _0
+                  | _ -> if right_zminus < _0 then -1, right_zminus, right_sum_zplus2.(k_1) else 0, _0, _0
               in
 
-              let total_loss = left_loss +. left_z +. right_loss +. right_z in
+              let mean_z = (left_z +. right_z) /. n in
+              let mean_z2 = (left_z2 +. right_z2) /. n in
+              let sd_z = sqrt(mean_z2 -. mean_z *. mean_z) in
+              assert (sd_z >= 0.0);
+              let tstat_split = mean_z /. sd_z in
+
               (* Utils.epr "[DEBUG] searching: id=%d k=%d/%d total_loss=%f left_zplus=%f left_zminus=%f left_z=%f right_zplus=%f right_zminus=%f right_z=%f\n%!" *)
               (*   feature_id k cardinality total_loss left_zplus left_zminus left_z right_zplus right_zminus right_z; *)
               if right_gamma = 0 && left_gamma = 0 then
-                total_loss
+                tstat_split
               else
-                let is_total_loss_smaller =
+                let is_split_better =
                   match !best_split with
                     | None -> true
-                    | Some (best_total_loss, best_split) ->
-                     total_loss < best_total_loss
+                    | Some (best_tstat, best_split) ->
+                     tstat_split < best_tstat
                 in
 
-                if is_total_loss_smaller then (
+                if is_split_better then (
                   let left = {
                     s_n = left_n;
                     s_gamma = float left_gamma;
@@ -427,9 +464,9 @@ class splitter
                   } in
 
                   let split = `CategoricalSplit (ord_split, s_to_k) in
-                  best_split := Some (total_loss, split)
+                  best_split := Some (tstat_split, split)
                 );
-                total_loss
+                tstat_split
             )
             else infinity
           )
@@ -441,11 +478,19 @@ class splitter
           let _ : float = Array.float_cumsum_left agg_sum_n left_sum_n in
           let _ : float = Array.float_cumsum_left agg_sum_zplus left_sum_zplus in
           let _ : float = Array.float_cumsum_left agg_sum_zminus left_sum_zminus in
+          let _ : float = Array.float_cumsum_left agg_sum_zplus2 left_sum_zplus2 in
+          let _ : float = Array.float_cumsum_left agg_sum_zminus2 left_sum_zminus2 in
+          (* let _ : float = Array.float_cumsum_left agg_sum_splus left_sum_splus in *)
+          (* let _ : float = Array.float_cumsum_left agg_sum_sminus left_sum_sminus in *)
           let _ : float = Array.float_cumsum_left agg_sum_loss left_sum_loss in
 
           let _ : float = Array.float_cumsum_right agg_sum_n right_sum_n in
           let _ : float = Array.float_cumsum_right agg_sum_zplus right_sum_zplus in
           let _ : float = Array.float_cumsum_right agg_sum_zminus right_sum_zminus in
+          let _ : float = Array.float_cumsum_right agg_sum_zplus2 right_sum_zplus2 in
+          let _ : float = Array.float_cumsum_right agg_sum_zminus2 right_sum_zminus2 in
+          (* let _ : float = Array.float_cumsum_right agg_sum_splus right_sum_splus in *)
+          (* let _ : float = Array.float_cumsum_right agg_sum_sminus right_sum_sminus in *)
           let _ : float = Array.float_cumsum_right agg_sum_loss right_sum_loss in
 
           let best_split = ref None in
@@ -453,8 +498,10 @@ class splitter
           (* find and keep optimal split -- the one associated with the minimum loss *)
           (* for k = 0 to cardinality-2 do *)
           let _ = optimize 0 (cardinality - 2) (fun k ->
+            let n = right_sum_n.(0) in (* total weight of wrk set *)
+            let k_1 = k + 1 in
             let left_n  = left_sum_n.(k)    in
-            let right_n = right_sum_n.(k+1) in
+            let right_n = right_sum_n.(k_1) in
 
             (* we can only have a split when the left and right
                approximations are based on one or more observations *)
@@ -464,39 +511,39 @@ class splitter
               let left_zplus = left_sum_zplus.(k) in
               let left_zminus = left_sum_zminus.(k) in
               let left_loss = left_sum_loss.(k) in
-              let left_gamma, left_z =
-                match compare left_zplus left_zminus with
-                  | -1 -> if left_zplus < 0.0 then 1, left_zplus else 0, 0.0
-                  | 1  -> if left_zminus < 0.0 then -1, left_zminus else 0, 0.0
-                  | 0  -> 0, 0.0
-                  | _ -> assert false
+              let left_gamma, left_z, left_z2 =
+                match compare left_zminus left_zplus with
+                  | 1 -> if left_zplus < _0 then 1, left_zplus, left_sum_zplus2.(k) else 0, _0, _0
+                  | _ -> if left_zminus < _0 then -1, left_zminus, left_sum_zminus2.(k) else 0, _0, _0
               in
 
-              let right_zplus = right_sum_zplus.(k) in
-              let right_zminus = right_sum_zminus.(k) in
-              let right_loss = right_sum_loss.(k) in
-              let right_gamma, right_z =
-                match compare right_zplus right_zminus with
-                  | -1 -> if right_zplus < 0.0 then 1, right_zplus else 0, 0.0
-                  | 1  -> if right_zminus < 0.0 then -1, right_zminus else 0, 0.0
-                  | 0  -> 0, 0.0
-                  | _ -> assert false
+              let right_zplus = right_sum_zplus.(k_1) in
+              let right_zminus = right_sum_zminus.(k_1) in
+              let right_loss = right_sum_loss.(k_1) in
+              let right_gamma, right_z, right_z2 =
+                match compare right_zminus right_zplus with
+                  | 1 -> if right_zplus < _0 then 1, right_zplus, right_sum_zplus2.(k_1) else 0, _0, _0
+                  | _ -> if right_zminus < _0 then -1, right_zminus, right_sum_zminus2.(k_1) else 0, _0, _0
               in
 
-              let total_loss = left_loss +. left_z +. right_loss +. right_z in
+              let mean_z = (left_z +. right_z) /. n in
+              let mean_z2 = (left_z2 +. right_z2) /. n in
+              let sd_z = sqrt(mean_z2 -. mean_z *. mean_z) in
+              assert (sd_z >= 0.0);
+              let tstat_split = mean_z /. sd_z in
               (* Utils.epr "[DEBUG] searching: id=%d k=%d/%d total_loss=%f left_zplus=%f left_zminus=%f left_z=%f right_zplus=%f right_zminus=%f right_z=%f\n%!" *)
               (*   feature_id k cardinality total_loss left_zplus left_zminus left_z right_zplus right_zminus right_z; *)
               if right_gamma = 0 && left_gamma = 0 then
-                total_loss
+                tstat_split
               else
-                let is_total_loss_smaller =
+                let is_split_better =
                   match !best_split with
                     | None -> true
-                    | Some (best_total_loss, best_split) ->
-                      total_loss < best_total_loss
+                    | Some (best_tstat, best_split) ->
+                      tstat_split < best_tstat
                 in
 
-                if is_total_loss_smaller then (
+                if is_split_better then (
                   let left = {
                     s_n = left_n;
                     s_gamma = float left_gamma;
@@ -520,9 +567,9 @@ class splitter
                   in
                   (* Utils.epr "[DEBUG] best split id=%d k=%d/%d total_loss=%f left_zplus=%f left_zminus=%f left_z=%f right_zplus=%f right_zminus=%f right_z=%f\n%!" *)
                   (*   feature_id k cardinality total_loss left_zplus left_zminus left_z right_zplus right_zminus right_z; *)
-                  best_split := Some (total_loss, curr_split)
+                  best_split := Some (tstat_split, curr_split)
                 );
-                total_loss
+                tstat_split
             )
             else
               infinity
@@ -531,21 +578,22 @@ class splitter
           in !best_split
 
     method metrics ~in_set ~out_set =
-      let wrk_loss = ref 0.0 in
-      let wrk_nn = ref 0.0 in
-      let val_loss = ref 0.0 in
-      let val_nn = ref 0.0 in
+      let wrk_loss = ref _0 in
+      let wrk_nn = ref _0 in
+      let val_loss = ref _0 in
+      let val_nn = ref _0 in
 
       for i = 0 to n_rows - 1 do
-        if in_set.(i) then (
+        let is_in = in_set.(i) in
+        let is_out = out_set.(i) in
+        assert (not (is_in && is_out));
+        if is_in then (
           let wi = weights.(i) in
           Utils.add_to wrk_nn wi;
           Utils.add_to wrk_loss (wi *. loss.(i));
           (* Utils.pr "[DEBUG] in_set i=%d w=%f l=%f z=%f wrk_nn=%f wrk_loss=%f\n%!" *)
           (*   i weights.(i) l.(i) z.(i) !wrk_nn !wrk_loss *)
-        );
-
-        if out_set.(i) then (
+        ) else if is_out then (
           let wi = weights.(i) in
           Utils.add_to val_nn wi;
           Utils.add_to val_loss (wi *. loss.(i));
@@ -554,7 +602,7 @@ class splitter
         )
       done;
 
-      if !wrk_nn > 0.0 && !val_nn > 0.0 then
+      if !wrk_nn > _0 && !val_nn > _0 then
         let wrk_loss = !wrk_loss /. !wrk_nn in
         let val_loss = !val_loss /. !val_nn in
 
