@@ -1,6 +1,10 @@
 val pr : ('a, out_channel, unit) format -> 'a
 val epr : ('a, out_channel, unit) format -> 'a
 
+val round : float -> int
+val iceil : float -> int
+val ifloor : float -> int
+
 val add_to : float ref -> float -> unit
 
 val divide_up : int -> int -> int
@@ -74,6 +78,8 @@ module Array : sig
   val foldi_right_from :
     (int -> 'a -> 'b -> 'b) -> int -> 'a array -> 'b -> 'b
   val foldi_right : (int -> 'a -> 'b -> 'b) -> 'a array -> 'b -> 'b
+  val iteri2 : (int -> 'a -> 'b -> unit) -> 'a array -> 'b array -> unit
+  val split : ('a * 'b) array -> 'a array * 'b array
   val float_cumsum_left : float array -> float array -> float
   val float_cumsum_right : float array -> float array -> float
   val fill_all : 'a array -> 'a -> unit
@@ -90,5 +96,6 @@ module Stats : sig
     hist_array : float array;
     sum_n : float;
   }
+  val histogram : 'a -> 'a array -> float array -> 'a histogram
   val rank_statistic : float histogram -> float -> float
 end

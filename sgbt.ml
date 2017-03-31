@@ -1,6 +1,7 @@
 (** Friedman's Stochastic Gradient Boosting Trees *)
 
 module IntSet = Utils.IntSet
+module Array = Utils.Array
 
 let random_seed = [| 9271 ; 12074; 3; 12921; 92; 763 |]
 
@@ -31,7 +32,7 @@ type conf = {
   binarization_threshold_opt : Logistic.binarization_threshold option;
   feature_monotonicity : feature_monotonicity;
   exclude_nan_target : bool;
-  exclude_inf_target : bool;
+  exclude_inf_target : bool; (* This is no longer supported! *)
   stochastic_gradient : bool;
   best_split_algo : [ `Fibonacci | `Exhaustive ];
   custom_force_mean : int option;
@@ -314,6 +315,14 @@ let learn_with_fold conf t fold_id initial_learning_rate deadline =
   let out_set =
     Array.init t.n_rows (fun i -> let n = t.folds.(i) in n >= 0 && n = fold_id)
   in
+  assert(
+    Array.foldi_left (fun i accu x ->
+      if not (x <> out_set.(i)) then (
+        Utils.epr "[ERROR] fold_id=%d i=%d folds.(i)=%d in_set.(i)=%b out_set.(i)=%b\n%!"
+          fold_id i t.folds.(i) in_set.(i) out_set.(i);
+        false
+      ) else accu
+    ) true in_set);
 
   let mean_model = t.splitter#mean_model ~in_set ~out_set in
   reset t mean_model;
@@ -532,6 +541,13 @@ let learn conf =
 
   let fold_feature_id, folds, weights, feature_map =
     folds_and_weights conf sampler feature_map n_rows
+  in
+  let () =
+    let open Utils.Stats in
+    let folds_hist = histogram (-314) folds weights in
+    Utils.Array.iteri2 (fun i fold_id count ->
+      Utils.epr "[INFO] %d: fold_id=%d count=%f\n%!" i fold_id count
+    ) folds_hist.repr_elements folds_hist.hist_array
   in
   let i_y_features, a_y_features, feature_map =
     extract_y_features ~fold_feature_id feature_map conf.ys

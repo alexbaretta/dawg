@@ -1,5 +1,5 @@
 let cmp_fst_ascending (v1,_) (v2,_) = Pervasives.compare v1 v2
-let sort_fst_ascending array = Array.sort cmp_fst_ascending array
+let sort_fst_ascending array = Array.fast_sort cmp_fst_ascending array
 
 let make_hist_array of_value na hist_table : ('t * int) array =
   let cardinality = Hashtbl.length hist_table in

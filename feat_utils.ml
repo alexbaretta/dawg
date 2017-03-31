@@ -160,16 +160,16 @@ let vector_of_feature = function
 let folds_of_feature ~n ~num_folds = function
   | `Ord { o_cardinality; o_vector } ->
     assert ( o_cardinality <= n );
-    let cardinality_per_fold = o_cardinality / num_folds in
-    if cardinality_per_fold = 0 then
+    if o_cardinality < num_folds then
       `TooManyOrdinalFolds o_cardinality
     else
+    let cardinality_per_fold = float o_cardinality /. float num_folds in
       let folds = Array.make n (-1) in
       (match o_vector with
         | `RLE rle ->
           Rlevec.iter rle (
             fun ~index ~length ~value ->
-              let fold = value / cardinality_per_fold in
+              let fold = Utils.ifloor (float value /. cardinality_per_fold) in
               for i = index to index + length - 1 do
                 folds.(i) <- fold
               done
@@ -179,7 +179,7 @@ let folds_of_feature ~n ~num_folds = function
           let width_num_bytes = Utils.num_bytes o_cardinality in
           Dense.iter ~width:width_num_bytes vec (
             fun ~index ~value ->
-              let fold = value / cardinality_per_fold in
+              let fold = Utils.ifloor (float value /. cardinality_per_fold) in
               folds.(index) <- fold
           );
       );

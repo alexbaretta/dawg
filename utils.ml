@@ -1,6 +1,15 @@
 let pr = Printf.printf
 let epr = Printf.eprintf
 
+let round x = match compare x 0.0 with
+  | 1 -> truncate (x +. 0.5)
+  | -1 -> truncate (x -. 0.5)
+  | 0 -> 0
+  | _ -> assert false
+
+let iceil x = truncate (ceil x)
+let ifloor x = truncate (floor x)
+
 let sort_and_dedup l =
   let l = List.sort Pervasives.compare l in
   List.fold_left (fun accu x ->
@@ -263,6 +272,17 @@ module Array = struct
   let foldi_right f a init =
     foldi_right_from f (Array.length a - 1) a init
 
+  let iteri2 f a b =
+    if Array.length a <> Array.length b then
+      Printf.ksprintf failwith "Array.iteri2: length(a)=%d length(b)=%d"
+        (length a) (length b);
+    iteri (fun i ai -> f i ai b.(i)) a
+
+  let split a =
+    let l = Array.map fst a in
+    let r = Array.map snd a in
+    l, r
+
   let float_cumsum_left a b =
     foldi_left (fun i accu elem ->
       let accu = accu +. elem in
@@ -349,12 +369,43 @@ module Array = struct
       loop (start - 1) init
 end
 
+module Hashtbl = struct
+  include Hashtbl
+
+  let find_default ht key default =
+    try Hashtbl.find ht key with Not_found -> default
+end
+
 module Stats = struct
   type 'a histogram = {
     repr_elements : 'a array;
     hist_array : float array;
     sum_n : float;
   }
+
+  let cmp_fst_ascending (v1,_) (v2,_) = Pervasives.compare v1 v2
+  let sort_fst_ascending array = Array.fast_sort cmp_fst_ascending array
+
+  let histogram na elems weights =
+    let ht = Hashtbl.create 256 in
+    Array.iteri2 (fun i e w ->
+      let w0 = Hashtbl.find_default ht e 0.0 in
+      let w1 = w0 +. w in
+      Hashtbl.replace ht e w1
+    ) elems weights;
+    let cardinality = Hashtbl.length ht in
+    let hist_array = Array.make cardinality (na, 0.0) in
+    let _cardinality, sum_n =
+      Hashtbl.fold (
+        fun v count (i, accu_n) ->
+          hist_array.(i) <- (v, count);
+          succ i, accu_n +. count
+      ) ht (0, 0.0)
+    in
+    assert(cardinality = _cardinality);
+    sort_fst_ascending hist_array;
+    let repr_elements, hist_array = Array.split hist_array in
+    { repr_elements; hist_array; sum_n }
 
   let rank_statistic histogram r =
     let { hist_array; repr_elements; sum_n } = histogram in
