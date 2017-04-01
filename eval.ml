@@ -302,7 +302,31 @@ let model_eval
   in
 
   let model_s = Mikmatch.Text.file_contents model_file_path in
-  let model = Model_j.c_model_of_string model_s in
+  let storage_model = Model_j.c_storage_model_of_string model_s in
+  let model = Model_utils.convert_storage_model storage_model in
+
+  let csv_ch =
+    match csv_file_path_opt with
+      | None -> stdin
+      | Some path -> open_in path
+  in
+  let header, next_row =
+    match Csv_io.of_channel ~no_header csv_ch with
+      | `Ok (header, next_row) -> header, next_row
+
+      | `SyntaxError loc ->
+        print_endline (Csv_io.string_of_error_location loc);
+        exit 1
+
+      | `UnterminatedString line_num ->
+        epr "unterminated string on line %d\n%!" line_num;
+        exit 1
+
+      | `IntOverflow (line, offending_string) ->
+        epr "value %S on line %d cannot be represented as an integer\n%!"
+          offending_string line;
+        exit 1
+  in
 
   let transform, folds, features =
     match positive_category_opt, model with
@@ -346,40 +370,17 @@ let model_eval
         noop, square.re_folds, square.re_features
 
       | None, `Custom custom ->
-        noop, custom.re_folds, custom.re_features
+        noop, custom.cu_folds, custom.cu_features
 
       | Some _, `Custom custom ->
         epr "[WARNING] file %S contains a custom model, not a logistic model as \
             implied by the positive category argument\n%!" model_file_path;
-        noop, custom.re_folds, custom.re_features
+        noop, custom.cu_folds, custom.cu_features
   in
   let num_folds = List.length folds in
 
   (* decode category directions from rle to array *)
   let folds = Model_utils.folds_rle_to_array folds in
-
-  let csv_ch =
-    match csv_file_path_opt with
-      | None -> stdin
-      | Some path -> open_in path
-  in
-  let header, next_row =
-    match Csv_io.of_channel ~no_header csv_ch with
-      | `Ok (header, next_row) -> header, next_row
-
-      | `SyntaxError loc ->
-        print_endline (Csv_io.string_of_error_location loc);
-        exit 1
-
-      | `UnterminatedString line_num ->
-        epr "unterminated string on line %d\n%!" line_num;
-        exit 1
-
-      | `IntOverflow (line, offending_string) ->
-        epr "value %S on line %d cannot be represented as an integer\n%!"
-          offending_string line;
-        exit 1
-  in
 
   let get, feature_id_to_feature_name = mk_get features header in
 

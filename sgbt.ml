@@ -38,7 +38,9 @@ type conf = {
   custom_force_mean : int option;
 }
 
-type t = {
+type 'c t = {
+  conf : conf;
+
   (* Unix.gettimeofday() *)
   start_time : float;
 
@@ -49,11 +51,11 @@ type t = {
   feature_map : Feat_map.t;
 
   (* how do we find best splits? *)
-  splitter : Loss.splitter;
+  splitter : 'c Loss.splitter;
 
   (* how do we evaluate a tree over all the observations in the
      training set? *)
-  eval : (Dog_t.feature_id -> Feat.afeature) -> Model_t.l_tree -> float array;
+  eval : (Dog_t.feature_id -> Feat.afeature) -> 'c Model_t.l_tree -> 'c array;
 
   (* how do we create random paritions of the training set (and
      subsets thereof) ? *)
@@ -75,7 +77,7 @@ let reset t mean_model =
     | `Ok -> ()
   )
 
-type learning_iteration = {
+type 'c learning_iteration = {
   (* iteration number; also, number of trees *)
   i : int ;
 
@@ -95,14 +97,14 @@ type learning_iteration = {
   first_loss : float;
   prev_loss : float;
   allowed_features : Feat_map.t option;
-  rev_trees : Model_t.l_tree list;
+  rev_trees : 'c Model_t.l_tree list;
   selected_features : IntSet.t;
 
   convergence_rate_smoother : Rls1.t;
   random_state : Random.State.t;
 
   (* what is the first tree? *)
-  mean_model : float;
+  mean_model : 'c;
 
   (* should learning stop, returning the best model produced so
      far? *)
@@ -117,16 +119,16 @@ let fake_stats = { Proto_t.s_gamma = nan; s_n = nan; s_loss = nan }
 
 let (~%) f y x = f x y
 
-let rec learn_with_fold_rate conf t iteration =
+let rec learn_with_fold_rate t iteration =
   let feature_monotonicity_map =
-    Feat_map.assoc t.feature_map conf.feature_monotonicity
+    Feat_map.assoc t.feature_map t.conf.feature_monotonicity
   in
   let feature_map = match iteration.allowed_features with
     | None -> t.feature_map
     | Some x -> x
   in
   let m = {
-    Tree.max_depth = conf.max_depth;
+    Tree.max_depth = t.conf.max_depth;
     feature_map;
     feature_monotonicity_map;
     splitter = t.splitter;
@@ -136,7 +138,7 @@ let rec learn_with_fold_rate conf t iteration =
   Sampler.shuffle t.sampler iteration.random_state;
   let { in_set; out_set } = iteration in
   let in_subset =
-    if conf.stochastic_gradient then
+    if t.conf.stochastic_gradient then
       Sampler.array (
         fun ~index ~value ->
           (* sample half the data that is also in the current fold *)
@@ -160,7 +162,7 @@ let rec learn_with_fold_rate conf t iteration =
     `Converged (iteration.learning_rate, fold)
   in
 
-  match conf.max_trees_opt with
+  match t.conf.max_trees_opt with
     | Some max_trees when exceed_max_trees iteration.i max_trees ->
         (* convergence, kinda *)
         Utils.pr "tree limit constraint met\n";
@@ -172,18 +174,13 @@ let rec learn_with_fold_rate conf t iteration =
           converge iteration
 
         | Some tree ->
-          let shrunken_tree = match conf.loss_type with
-            | `Custom _ -> tree
-            | _ ->
-              let tree = Tree.scale_optimally tree in_subset in
-              Tree.shrink iteration.learning_rate tree
-          in
+          let shrunken_tree = t.splitter#shrink iteration.learning_rate tree in
           let gamma = t.eval (Feat_map.a_find_by_id t.feature_map) shrunken_tree in
 
           match t.splitter#boost gamma with
             | `NaN i -> (
               Utils.epr "[WARNING] diverged: nan at row %d\n%!" i;
-              cut_learning_rate conf t iteration
+              cut_learning_rate t iteration
             )
 
             | `Ok ->
@@ -194,7 +191,7 @@ let rec learn_with_fold_rate conf t iteration =
               let loss_improvement = iteration.prev_loss -. val_loss in
               let convergence_rate = loss_improvement /. abs_float val_loss in
               let convergence_rate_smoother, convergence_rate_hat, use_smoother =
-                if conf.convergence_rate_smoother_forgetful_factor > 0.0 then
+                if t.conf.convergence_rate_smoother_forgetful_factor > 0.0 then
                   let convergence_rate_smoother =
                     Rls1.add iteration.convergence_rate_smoother convergence_rate
                   in
@@ -225,7 +222,7 @@ let rec learn_with_fold_rate conf t iteration =
                 IntSet.union iteration.selected_features (Tree.extract_features tree)
               in
               let allowed_features =
-                match conf.max_features_opt with
+                match t.conf.max_features_opt with
                   | None -> None
                   | Some max_features ->
                     match iteration.allowed_features with
@@ -236,6 +233,7 @@ let rec learn_with_fold_rate conf t iteration =
                         else
                           None
               in
+
               let next_iteration () =
                 (* let stats = Model_utils.tree_extract_stats [] fake_stats tree in *)
                 (* Utils.epr "[DEBUG] i=%d %s\n%!" *)
@@ -252,10 +250,10 @@ let rec learn_with_fold_rate conf t iteration =
                 }
               in
               let continue_learning () =
-                learn_with_fold_rate conf t (next_iteration ())
+                learn_with_fold_rate t (next_iteration ())
               in
 
-              if conf.max_trees_opt <> None then
+              if t.conf.max_trees_opt <> None then
                 continue_learning ()
               else if iteration.timeout () then (
                 Utils.pr "timeout!\n";
@@ -271,7 +269,7 @@ let rec learn_with_fold_rate conf t iteration =
                   Utils.pr "converged: metrics indicate continuing is pointless\n";
                   converge (next_iteration ())
                 )
-                else if convergence_rate_hat <= conf.min_convergence_rate then (
+                else if convergence_rate_hat <= t.conf.min_convergence_rate then (
                   (* convergence! *)
                   Utils.pr "converged: rate exceeded at val_loss = %.4e\n%!" val_loss;
                   if val_loss >= iteration.prev_loss then
@@ -280,14 +278,14 @@ let rec learn_with_fold_rate conf t iteration =
                     converge (next_iteration ())
                 )
                 else if val_loss -. iteration.prev_loss >= 2.0 *. abs_float iteration.prev_loss then (
-                  (* cut_learning_rate conf t iteration *)
+                  (* cut_learning_rate t iteration *)
                   Utils.pr "diverged: loss rose dramatically!\n";
                   converge iteration
                 )
                 else continue_learning ()
 
 
-and cut_learning_rate conf t iteration =
+and cut_learning_rate t iteration =
   (* cut the learning rate in half and try again *)
   let learning_rate = 0.5 *. iteration.learning_rate in
   Utils.pr "reducing learning rate from %f to %f\n"
@@ -303,11 +301,11 @@ and cut_learning_rate conf t iteration =
       tree_start_time = Unix.gettimeofday();
       rev_trees = [];
   } in
-  learn_with_fold_rate conf t iteration
+  learn_with_fold_rate t iteration
 
-let learn_with_fold conf t fold_id initial_learning_rate deadline =
+let learn_with_fold t fold_id initial_learning_rate deadline =
   let in_set =
-    if conf.num_folds = 1 then
+    if t.conf.num_folds = 1 then
       Array.init t.n_rows (fun i -> let n = t.folds.(i) in n >= 0)
     else
       Array.init t.n_rows (fun i -> let n = t.folds.(i) in n >= 0 && n <> fold_id)
@@ -333,12 +331,13 @@ let learn_with_fold conf t fold_id initial_learning_rate deadline =
   let s_head = t.splitter#metrics_header in
 
   Utils.pr "% 15s fold % 3d           wrk %s   val %s\n%!" "" fold_id s_head s_head;
-  Utils.pr "    % 6.4e mean % 3d          %s  %s\n%!" mean_model fold_id s_wrk s_val;
+  Utils.pr "    % 11s mean % 3d          %s  %s\n%!"
+    (t.splitter#gamma_to_string mean_model) fold_id s_wrk s_val;
 
   let new_random_seed = [| Random.int 10_000 |] in
 
   let timeout =
-    match conf.deadline with
+    match t.conf.deadline with
       | None -> fun () -> false (* don't timeout *)
       | Some deadline ->
         fun () ->
@@ -346,7 +345,7 @@ let learn_with_fold conf t fold_id initial_learning_rate deadline =
   in
 
   let convergence_rate_smoother = Rls1.create
-      conf.convergence_rate_smoother_forgetful_factor in
+      t.conf.convergence_rate_smoother_forgetful_factor in
 
   let now = Unix.gettimeofday() in
   let iteration = {
@@ -369,7 +368,7 @@ let learn_with_fold conf t fold_id initial_learning_rate deadline =
     timeout;
   } in
 
-  learn_with_fold_rate conf t iteration
+  learn_with_fold_rate t iteration
 
 let folds_and_weights conf sampler feature_map n =
   let fold_feature_id, folds, feature_map = match conf.fold_feature_opt with
@@ -516,6 +515,28 @@ let extract_y_features ~fold_feature_id feature_map ys =
         ) i_ys accu
   ) ys ([], [], feature_map)
 
+let rec loop (t: 'c t) fold_id (folds : ('a, 'b, 'c) Model_t.folds) initial_learning_rate =
+  if (match t.conf.only_fold_id with
+    | None -> fold_id >= t.conf.num_folds
+    | Some i -> fold_id <> i
+  ) then
+    folds
+  else
+    match learn_with_fold t fold_id initial_learning_rate 0.0 with
+      | `Converged (effective_learning_rate, fold) ->
+        let folds = fold :: folds in
+        (* set the initial learning rate of the next fold model to the
+           effective learning rate of the previous one; this means that
+           the learning rate can gradually decrease from one fold to the
+           next, as a learning attempt on folds fail (diverge) *)
+        loop t (fold_id + 1) folds effective_learning_rate
+      | `Timeout fold ->
+        (* time's up!  only include [trees] if no other trees were
+           previously learned. *)
+        match folds with
+          | [] -> [fold]
+          | _ -> folds
+
 
 let learn conf =
   let dog_reader = Dog_io.RO.create conf.dog_file_path in
@@ -527,13 +548,12 @@ let learn conf =
   in
   (* let n = num_observations in *)
 
-  assert ( conf.num_folds > 0 );
+  assert (conf.num_folds > 0);
   if conf.num_folds >= n_rows then (
     Utils.epr "[ERROR] number of folds %d must be smaller than the number of observations \
         %d\n%!" conf.num_folds n_rows;
     exit 1
   );
-
 
   let random_state = Random.State.make random_seed in
   let sampler = Sampler.create n_rows in
@@ -604,7 +624,6 @@ let learn conf =
     Utils.epr "[INFO] feature id % 3d: %s\n%!" id descr
   ) in
 
-
   assert (
     (* make sure fold features (if any) are gone from the
        [feature_map] *)
@@ -626,131 +645,46 @@ let learn conf =
     | `Exhaustive -> Fibsearch.minimize_exhaustive
   in
 
-  let splitter : Loss.splitter =
-    match conf.loss_type with
-      | `Logistic ->
-        let y_feature = match a_y_features with
-          | [] ->
-            Utils.epr "[ERROR] no target feature for logistic model";
-            exit 1
-          | [y_feature] -> y_feature
-          | _ :: _ :: _ ->
-            Utils.epr "[ERROR] too many features for logistic model";
-            Utils.epr "[ERROR] currently logistic models support only 1 target";
-            exit 1
-        in
-        new Logistic.splitter
-          ~optimize
-          ~max_gamma_opt:conf.max_gamma_opt
-          ~binarization_threshold_opt:conf.binarization_threshold_opt
-          ~weights
-          ~y_feature
-          ~n_rows
-          ~num_observations
-          ~min_observations_per_node:conf.min_observations_per_node
-
-      | `Square ->
-        let y_feature = match a_y_features with
-          | [] ->
-            Utils.epr "[ERROR] no target feature for square error model";
-            exit 1
-          | [y_feature] -> y_feature
-          | _ :: _ :: _ ->
-            Utils.epr "[ERROR] too many features for square error model";
-            Utils.epr "[ERROR] currently square error models support only 1 target";
-            exit 1
-        in
-        new Square.splitter
-          ~optimize
-          ~max_gamma_opt:conf.max_gamma_opt
-          ~weights
-          ~y_feature
-          ~n_rows
-          ~num_observations
-          ~min_observations_per_node:conf.min_observations_per_node
-
-      | `Robust ->
-        let y_feature = match a_y_features with
-          | [] ->
-            Utils.epr "[ERROR] no target feature for robust mean model";
-            exit 1
-          | [y_feature] -> y_feature
-          | _ :: _ :: _ ->
-            Utils.epr "[ERROR] too many features for robust mean model";
-            Utils.epr "[ERROR] currently robust mean models support only 1 target";
-            exit 1
-        in
-        new Robust.splitter
-          ~optimize
-          ~max_gamma_opt:conf.max_gamma_opt
-          ~weights
-          ~y_feature
-          ~n_rows
-          ~num_observations
-          ~min_observations_per_node:conf.min_observations_per_node
-
-      | `Custom optimization ->
-        new Custom_loss.splitter
-          ~optimization
-          ~optimize
-          ~weights
-          ~y_features:a_y_features
-          ~n_rows
-          ~num_observations
-          ~min_observations_per_node:conf.min_observations_per_node
-          ~force_mean:conf.custom_force_mean
-  in
-
-  let eval = Tree.mk_eval n_rows in
-
-  let t = {
+  let mk_t splitter = {
+    conf = conf;
     start_time = Unix.gettimeofday();
     n_rows;
     feature_map;
     splitter;
-    eval;
+    eval = Tree.mk_eval n_rows splitter#na;
     sampler;
     folds
   } in
 
-  let rec loop fold_id (folds : ('a, 'b) Model_t.folds) initial_learning_rate =
-    if (match conf.only_fold_id with
-      | None -> fold_id >= conf.num_folds
-      | Some i -> fold_id <> i
-    ) then
-      folds
-    else
-      match learn_with_fold conf t fold_id initial_learning_rate 0.0 with
+  (* let rec loop : 'c. 'c t -> int -> ('a, 'b, 'c) Model_t.folds -> float -> ('a, 'b, 'c) Model_t.folds = *)
+  (*   fun (t: 'c t) fold_id (folds : ('a, 'b, 'c) Model_t.folds) initial_learning_rate -> *)
+  (*   (\* if (match conf.only_fold_id with *\) *)
+  (*   (\*   | None -> fold_id >= conf.num_folds *\) *)
+  (*   (\*   | Some i -> fold_id <> i *\) *)
+  (*   (\* ) then *\) *)
+  (*     folds *)
+  (*   (\* else *\) *)
+  (*     (\* match learn_with_fold conf t fold_id initial_learning_rate 0.0 with *\) *)
 
-        | `Converged (effective_learning_rate, fold) ->
-          let folds = fold :: folds in
-          (* set the initial learning rate of the next fold model to the
-             effective learning rate of the previous one; this means that
-             the learning rate can gradually decrease from one fold to the
-             next, as a learning attempt on folds fail (diverge) *)
-          loop (fold_id + 1) folds effective_learning_rate
+  (*     (\*   | `Converged (effective_learning_rate, fold) -> *\) *)
+  (*     (\*     let folds = fold :: folds in *\) *)
+  (*     (\*     (\\* set the initial learning rate of the next fold model to the *\) *)
+  (*     (\*        effective learning rate of the previous one; this means that *\) *)
+  (*     (\*        the learning rate can gradually decrease from one fold to the *\) *)
+  (*     (\*        next, as a learning attempt on folds fail (diverge) *\\) *\) *)
+  (*     (\*     loop t (fold_id + 1) folds effective_learning_rate *\) *)
 
-        | `Timeout fold ->
-          (* time's up!  only include [trees] if no other trees were
-             previously learned. *)
-          match folds with
-            | [] -> [fold]
-            | _ -> folds
+  (*     (\*   | `Timeout fold -> *\) *)
+  (*     (\*     (\\* time's up!  only include [trees] if no other trees were *\) *)
+  (*     (\*        previously learned. *\\) *\) *)
+  (*     (\*     match folds with *\) *)
+  (*     (\*       | [] -> [fold] *\) *)
+  (*     (\*       | _ -> folds *\) *)
 
-  in
-
-  (* combine the model learned for each fold into a mega-model,
-     where these sequence of trees are simply averaged (bagged!) *)
-  let initial_fold_id = match conf.only_fold_id with
-    | Some i -> i
-    | None -> 0
-  in
-  let folds = loop initial_fold_id [] conf.initial_learning_rate in
-
-  let folds, features = Model_utils.folds_l_to_c feature_map folds in
+  (* in *)
 
   (* write model file *)
-  let () =
+  let write t folds features =
     (* open channel *)
     let ouch = open_out conf.output_file_path in
 
@@ -758,7 +692,7 @@ let learn conf =
     let out_buf = Bi_outbuf.create_channel_writer ouch in
 
     (* write model to buffer *)
-    splitter#write_model folds features out_buf;
+    t.splitter#write_model folds features out_buf;
 
     (* flush buffer *)
     Bi_outbuf.flush_channel_writer out_buf;
@@ -766,4 +700,101 @@ let learn conf =
     (* close channel *)
     close_out ouch
   in
-  ()
+
+  let initial_fold_id = match conf.only_fold_id with
+    | Some i -> i
+    | None -> 0
+  in
+
+  match conf.loss_type with
+    | `Logistic ->
+      let y_feature = match a_y_features with
+        | [] ->
+          Utils.epr "[ERROR] no target feature for logistic model";
+          exit 1
+        | [y_feature] -> y_feature
+        | _ :: _ :: _ ->
+          Utils.epr "[ERROR] too many features for logistic model";
+          Utils.epr "[ERROR] currently logistic models support only 1 target";
+          exit 1
+      in
+      let splitter = new Logistic.splitter
+        ~optimize
+        ~max_gamma_opt:conf.max_gamma_opt
+        ~binarization_threshold_opt:conf.binarization_threshold_opt
+        ~weights
+        ~y_feature
+        ~n_rows
+        ~num_observations
+        ~min_observations_per_node:conf.min_observations_per_node
+      in
+      let t = mk_t splitter in
+      let folds = loop t initial_fold_id [] conf.initial_learning_rate in
+      let folds, features = Model_utils.folds_l_to_c feature_map folds in
+      write t folds features
+
+    | `Square ->
+      let y_feature = match a_y_features with
+        | [] ->
+          Utils.epr "[ERROR] no target feature for square error model";
+          exit 1
+        | [y_feature] -> y_feature
+        | _ :: _ :: _ ->
+          Utils.epr "[ERROR] too many features for square error model";
+          Utils.epr "[ERROR] currently square error models support only 1 target";
+          exit 1
+      in
+      let splitter = new Square.splitter
+        ~optimize
+        ~max_gamma_opt:conf.max_gamma_opt
+        ~weights
+        ~y_feature
+        ~n_rows
+        ~num_observations
+        ~min_observations_per_node:conf.min_observations_per_node
+      in
+      let t = mk_t splitter in
+      let folds = loop t initial_fold_id [] conf.initial_learning_rate in
+      let folds, features = Model_utils.folds_l_to_c feature_map folds in
+      write t folds features
+
+    | `Robust ->
+      let y_feature = match a_y_features with
+        | [] ->
+          Utils.epr "[ERROR] no target feature for robust mean model";
+          exit 1
+        | [y_feature] -> y_feature
+        | _ :: _ :: _ ->
+          Utils.epr "[ERROR] too many features for robust mean model";
+          Utils.epr "[ERROR] currently robust mean models support only 1 target";
+          exit 1
+      in
+      let splitter = new Robust.splitter
+        ~optimize
+        ~max_gamma_opt:conf.max_gamma_opt
+        ~weights
+        ~y_feature
+        ~n_rows
+        ~num_observations
+        ~min_observations_per_node:conf.min_observations_per_node
+      in
+      let t = mk_t splitter in
+      let folds = loop t initial_fold_id [] conf.initial_learning_rate in
+      let folds, features = Model_utils.folds_l_to_c feature_map folds in
+      write t folds features
+
+    | `Custom optimization ->
+      let splitter = new Custom_loss.splitter
+        ~optimization
+        ~optimize
+        ~weights
+        ~y_features:a_y_features
+        ~n_rows
+        ~num_observations
+        ~min_observations_per_node:conf.min_observations_per_node
+        ~force_mean:conf.custom_force_mean
+      in
+      let t = mk_t splitter in
+      let folds = loop t initial_fold_id [] conf.initial_learning_rate in
+      let folds, features = Model_utils.folds_l_to_c feature_map folds in
+      write t folds features

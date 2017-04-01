@@ -131,17 +131,6 @@ let loss { loss; tf; ft } =
   let has_converged = frac_misclassified = 0.0 in
   loss, has_converged
 
-type model = Model_t.l_logistic_model
-
-(*
-type s = {
-  (* probability: $p(\bf{ x_i } = Pr(y_i=1|\bf{ x_i } ) = 1/(1 + \exp( -2 f( \bf{x_i} ) ) ) *)
-  p : float array;
-
-}
-*)
-
-
 let string_of_metrics { n; loss; tt; tf; ft; ff } =
   Printf.sprintf "% 8.2f %.4e %.4e %.4e %.4e %.4e"
     n loss tt tf ft ff
@@ -450,7 +439,7 @@ class splitter
   ~n_rows
   ~num_observations
   ~min_observations_per_node
-  : Loss.splitter
+  : [float] Loss.splitter
   =
   let y, positive_category, negative_category_opt =
     y_array_of_feature binarization_threshold_opt y_feature n_rows in
@@ -576,7 +565,7 @@ class splitter
     method best_split
              (monotonicity : Dog_t.monotonicity)
              feature
-           : (float * Proto_t.split) option
+           : (float * float Proto_t.split) option
       =
       let feature_id = Feat_utils.id_of_feature feature in
 
@@ -980,6 +969,9 @@ class splitter
         bi_folds = folds;
         bi_features = features;
       } in
-      Model_j.write_c_model out_buf model
+      Model_j.write_c_storage_model out_buf model
 
+    method na = nan
+    method shrink learning_rate tree = Tree.shrink learning_rate tree
+    method gamma_to_string gamma = Printf.sprintf "% 6.4e" gamma
   end

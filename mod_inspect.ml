@@ -178,7 +178,8 @@ let importance_of_features folds =
 
 let main model_file_path =
   let model_s = Mikmatch.Text.file_contents model_file_path in
-  let model = Model_j.c_model_of_string model_s in
+  let storage_model = Model_j.c_storage_model_of_string model_s in
+  let model = Model_utils.convert_storage_model storage_model in
   let folds, features =
     match model with
       | `Logistic logistic ->
@@ -193,9 +194,9 @@ let main model_file_path =
       | `Square square ->
         printf "kind: square\n%!";
         square.re_folds, square.re_features
-      | `Custom custom ->
-        printf "kind: custom\n%!";
-        custom.re_folds, custom.re_features
+      | `Custom custom -> assert false
+        (* printf "kind: custom\n%!"; *)
+        (* custom.re_folds, custom.re_features *)
   in
   List.(printf "num trees: %d\nnum trees: %d\nnum features: %d\n%!"
           (length folds)

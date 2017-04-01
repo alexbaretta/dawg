@@ -16,15 +16,18 @@ type metrics = {
   val_loss : float
 }
 
-class type splitter = object
+class type ['c] splitter = object
   method clear : unit
-  method best_split : Dog_t.monotonicity -> Feat.afeature -> Proto_t.loss_split_opt
-  method boost : float array -> [ `NaN of int | `Ok ]
+  method best_split : Dog_t.monotonicity -> Feat.afeature -> 'c Proto_t.loss_split_opt
+  method boost : 'c array -> [ `NaN of int | `Ok ]
   method update_with_subset : bool array -> unit
-  method mean_model : in_set:bool array -> out_set:bool array -> float
+  method mean_model : in_set:bool array -> out_set:bool array -> 'c
   method metrics_header : string
   method metrics : in_set:bool array -> out_set:bool array -> metrics
   method num_observations : int
-  method write_model : Model_t.c_folds -> Model_t.feature list -> Bi_outbuf.t ->
+  method write_model : 'c Model_t.c_folds -> Model_t.feature list -> Bi_outbuf.t ->
     unit
+  method na : 'c
+  method shrink : float -> 'c Model_t.l_tree -> 'c Model_t.l_tree
+  method gamma_to_string : 'c -> string
 end

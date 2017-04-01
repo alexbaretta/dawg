@@ -225,6 +225,13 @@ module List = struct
       | [] -> ()
     in iteri 0 l
 
+  let rec foldi_left_from f i init l =
+    match l with
+      | hd :: tl -> foldi_left_from f (succ i) (f i init hd) tl
+      | [] -> init
+
+  let foldi_left f init l = foldi_left_from f 0 init l
+
   let rec first accu n list =
     if n = 0 then
       List.rev accu

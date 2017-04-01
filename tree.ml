@@ -76,11 +76,11 @@ let partition_observations in_subset splitting_feature best_split =
   );
   in_subset_left, in_subset_right
 
-type m = {
+type 'c m = {
   max_depth : int;
   feature_map : Feat_map.t;
   feature_monotonicity_map : feature_monotonicity_map;
-  splitter : Loss.splitter;
+  splitter : 'c Loss.splitter;
 }
 
 let string_of_split { s_gamma ; s_n ; s_loss } =
@@ -129,56 +129,38 @@ let directions_of_split s_to_k s_pivot =
     *)
   directions
 
-let rec terminate (best_split : Proto_t.split) =
-  let difference_in_gamma =
-    let os =
-      match best_split with
-        | `OrdinalSplit os -> os
-        | `CategoricalSplit (os, _) -> os
-    in
-    os.os_left.s_gamma -. os.os_right.s_gamma
-  in
-  if abs_float difference_in_gamma < -1e8 then
-    None (* split not found *)
-  else
-    let node =
-      match best_split with
-        | `CategoricalSplit (os, s_to_k) ->
-          let directions = directions_of_split s_to_k os.os_split in
-          `CategoricalNode {
-            cn_feature_id = os.os_feature_id;
-            cn_category_directions = directions;
-            cn_left_tree = `Leaf os.os_left.s_gamma;
-            cn_right_tree = `Leaf os.os_right.s_gamma;
-            cn_left_stats = os.os_left;
-            cn_right_stats = os.os_right;
-          }
-
-        | `OrdinalSplit os -> `OrdinalNode {
-            on_feature_id = os.os_feature_id;
-            on_split = os.os_split;
-            on_left_tree = `Leaf os.os_left.s_gamma;
-            on_right_tree = `Leaf os.os_right.s_gamma;
-            on_left_stats = os.os_left;
-            on_right_stats = os.os_right;
-          }
-    in
-    Some node
-
-and scale_optimally tree in_subset =
-  tree
-
-and make m depth in_subset =
+let rec make m depth in_subset : 'c Model_t.l_tree option =
   m.splitter#update_with_subset in_subset;
   match best_split_of_features m with
     | None -> None
-
     | Some split ->
       let splitting_feature, loss, split = split in
 
       if depth + 1 >= m.max_depth then
-        terminate split
+        let node =
+          match split with
+            | `CategoricalSplit (os, s_to_k) ->
+              let directions = directions_of_split s_to_k os.os_split in
+              `CategoricalNode {
+                cn_feature_id = os.os_feature_id;
+                cn_category_directions = directions;
+                cn_left_tree = `Leaf os.os_left.s_gamma;
+                cn_right_tree = `Leaf os.os_right.s_gamma;
+                cn_left_stats = os.os_left;
+                cn_right_stats = os.os_right;
+              }
 
+            | `OrdinalSplit os ->
+              `OrdinalNode {
+                on_feature_id = os.os_feature_id;
+                on_split = os.os_split;
+                on_left_tree = `Leaf os.os_left.s_gamma;
+                on_right_tree = `Leaf os.os_right.s_gamma;
+                on_left_stats = os.os_left;
+                on_right_stats = os.os_right;
+              }
+        in
+        Some node
       else
         let in_subset_left, in_subset_right =
           partition_observations in_subset splitting_feature split in
@@ -348,9 +330,9 @@ let feature_id_set_of_tree tree =
     ) 0 tree_array
 *)
 
-let mk_eval num_observations =
-  let gamma = Array.make num_observations nan in
-  let gamma_leaf = Array.make num_observations (`Leaf nan) in
+let mk_eval num_observations na =
+  let gamma = Array.make num_observations na in
+  let gamma_leaf = Array.make num_observations (`Leaf na) in
   fun find_by_id tree ->
     let feature_id_set = feature_id_set_of_tree tree in
     Array.fill gamma_leaf 0 num_observations tree;

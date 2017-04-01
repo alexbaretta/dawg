@@ -16,4 +16,4 @@ class splitter :
     n_rows:int ->
     num_observations:int ->
     min_observations_per_node:float ->
-      Loss.splitter
+      [float] Loss.splitter

@@ -14,8 +14,6 @@ let loss { loss } =
   loss, false (* unlike logistic, square objective
                  has only one metric -- the loss itself *)
 
-type model = Model_t.l_regression_model
-
 let string_of_metrics { n; loss } =
   Printf.sprintf "% 6.2f %.4e" n loss
 
@@ -60,7 +58,7 @@ class splitter
   ~n_rows
   ~num_observations
   ~min_observations_per_node
-  : Loss.splitter
+  : [float] Loss.splitter
   =
   let y = y_repr_array y_feature n_rows in
 
@@ -165,7 +163,7 @@ class splitter
     method best_split
              (monotonicity : Dog_t.monotonicity)
              feature
-           : (float * Proto_t.split) option
+           : (float * float Proto_t.split) option
       =
       let feature_id = Feat_utils.id_of_feature feature in
 
@@ -495,6 +493,9 @@ class splitter
       let open Model_t in
       let re_num_folds = List.length re_folds in
       let model = `Square { re_num_folds; re_folds; re_features } in
-      Model_j.write_c_model out_buf model
+      Model_j.write_c_storage_model out_buf model
 
+    method na = nan
+    method shrink learning_rate tree = Tree.shrink learning_rate tree
+    method gamma_to_string gamma = Printf.sprintf "% 6.4e" gamma
   end

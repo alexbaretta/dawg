@@ -39,9 +39,9 @@ type ufeature <ocaml_biniou module="Dog_b" ocaml_json module="Dog_j">= abstract
 type ifeature <ocaml_biniou module="Dog_b" ocaml_json module="Dog_j">= abstract
 *)
 
-type point = {
+type 'c point = {
   (* what is the value of the piecewise function at the split? *)
-  s_gamma : float ;
+  s_gamma : 'c ;
 
   (* how many observations does the split cover? *)
   s_n : float ;
@@ -50,25 +50,25 @@ type point = {
   s_loss  : float ;
 }
 
-type ordinal_split = {
+type 'c ordinal_split = {
   os_feature_id : feature_id ;
   os_split : int ;
-  os_left : point ;
-  os_right : point ;
+  os_left : 'c point ;
+  os_right : 'c point ;
 }
 
-type categorical_split = (ordinal_split * int list <ocaml repr="array">)
+type 'c categorical_split = ('c ordinal_split * int list <ocaml repr="array">)
 
-type split = [
-  | OrdinalSplit of ordinal_split
-  | CategoricalSplit of categorical_split
+type 'c split = [
+| OrdinalSplit of 'c ordinal_split
+  | CategoricalSplit of 'c categorical_split
 ]
 
-type loss_split_opt = (float * split) option
+type 'c loss_split_opt = (float * 'c split) option
 
-type push = {
+type 'c push = {
   feature_id : feature_id ;
-  split : split
+  split : 'c split
 }
 
 type to_worker_in_acquired = [
@@ -106,7 +106,8 @@ type to_worker_in_learning = [
   | BestSplit
   (* get the best split among all the worker's active features  *)
 
-  | Push of push
+  (* TODO: Need to figure out how to implement different gamma types in the worker protocol *)
+  (* | Push of 'c push *)
 
   | Ascend
 
@@ -137,7 +138,7 @@ type to_worker = [
 type from_worker = [
   | Error of string
   | AckId of id
-  | AckBestSplit of loss_split_opt
+  (* | AckBestSplit of loss_split_opt *)
   | AckSample
   | AckAcquire of bool
   | AckConfigure

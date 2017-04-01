@@ -315,14 +315,17 @@ let gen input_file_path output_file_path_opt function_name
   let model, model_md5 =
     let model_s = Mikmatch.Text.file_contents input_file_path in
     let model_md5 = Digest.(to_hex (string model_s)) in
-    Model_j.c_model_of_string model_s, model_md5
+    let storage_model = Model_j.c_storage_model_of_string model_s in
+    let model = Model_utils.convert_storage_model storage_model in
+    model, model_md5
   in
 
   let folds, features =
     match model with
       | `Logistic { bi_folds; bi_features } ->
         bi_folds, bi_features
-      | `Custom { re_folds; re_features }
+      | `Custom { cu_folds; cu_features } ->
+        cu_folds, cu_features
       | `Square { re_folds; re_features } ->
         re_folds, re_features
   in

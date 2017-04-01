@@ -19,9 +19,9 @@ type feature = [
   | OrdinalFeature of ordinal_feature
 ]
 
-type point <ocaml from="Proto" predef> = {
+type 'c point <ocaml from="Proto" predef> = {
   (* what is the value of the piecewise function at the split? *)
-  s_gamma : float ;
+  s_gamma : 'c ;
 
   (* how many observations does the split cover? *)
   s_n : float ;
@@ -30,28 +30,28 @@ type point <ocaml from="Proto" predef> = {
   s_loss  : float ;
 }
 
-type ('a, 'b) categorical_node = {
+type ('a, 'b, 'c) categorical_node = {
   feature_id : int;
   category_directions : 'b;
-  left_tree  : ('a, 'b) tree;
-  right_tree : ('a, 'b) tree;
-  left_stats : point;
-  right_stats: point;
+  left_tree  : ('a, 'b, 'c) tree;
+  right_tree : ('a, 'b, 'c) tree;
+  left_stats : 'c point;
+  right_stats: 'c point;
 } <ocaml field_prefix="cn_">
 
-type ('a, 'b) ordinal_node = {
+type ('a, 'b, 'c) ordinal_node = {
   feature_id : int;
   split      : 'a;
-  left_tree  : ('a, 'b) tree;
-  right_tree : ('a, 'b) tree;
-  left_stats : point;
-  right_stats: point;
+  left_tree  : ('a, 'b, 'c) tree;
+  right_tree : ('a, 'b, 'c) tree;
+  left_stats : 'c point;
+  right_stats: 'c point;
 } <ocaml field_prefix="on_">
 
-type ('a, 'b) tree = [
-  | Leaf of float
-  | CategoricalNode of ('a, 'b) categorical_node
-  | OrdinalNode of ('a, 'b) ordinal_node
+type ('a, 'b, 'c) tree = [
+  | Leaf of 'c
+  | CategoricalNode of ('a, 'b, 'c) categorical_node
+  | OrdinalNode of ('a, 'b, 'c) ordinal_node
 ]
 
 type category_direction = [ Left | Right ]
@@ -63,51 +63,66 @@ type direction_rle = {
   run_lengths : int list (* list of run lengths *)
 } <ocaml field_prefix="dr_">
 
-type ('a, 'b) trees = ('a, 'b) tree list
-type ('a, 'b) fold = {
+type ('a, 'b, 'c) trees = ('a, 'b, 'c) tree list
+type ('a, 'b, 'c) fold = {
   fold_id : int;
-  mean: float;
-  trees : ('a, 'b) trees;
+  mean: 'c;
+  trees : ('a, 'b, 'c) trees;
 }
-type ('a, 'b) folds = ('a, 'b) fold list
+type ('a, 'b, 'c) folds = ('a, 'b, 'c) fold list
 
-type ('a, 'b) logistic_model = {
+type ('a, 'b, 'c) logistic_model = {
   positive_category : string;
   negative_category_opt : string option;
   features : feature list;
   num_folds: int;
-  folds : ('a, 'b) folds;
+  folds : ('a, 'b, 'c) folds;
 } <ocaml field_prefix="bi_">
 
-type ('a, 'b) regression_model = {
+type ('a, 'b, 'c) regression_model = {
   features : feature list;
   num_folds: int;
-  folds : ('a, 'b) folds;
+  folds : ('a, 'b, 'c) folds;
 } <ocaml field_prefix="re_">
 
-type ('a, 'b) model = [
-  | Logistic of  ('a, 'b) logistic_model
-  | Square of  ('a, 'b) regression_model
-  | Custom of ('a, 'b) regression_model
+type ('a, 'b, 'c) custom_model = {
+  levels: float list <ocaml repr="array">;
+  features : feature list;
+  num_folds: int;
+  folds : ('a, 'b, 'c) folds;
+} <ocaml field_prefix="cu_">
+
+type ('a, 'b, 'c) model = [
+  | Logistic of ('a, 'b, 'c) logistic_model
+  | Square of ('a, 'b, 'c) regression_model
+  | Custom of ('a, 'b, 'c) custom_model
+]
+type ('a, 'b) storage_model = [
+  | Logistic of ('a, 'b, float) logistic_model
+  | Square of ('a, 'b, float) regression_model
+  | Custom of ('a, 'b, int) custom_model
 ]
 
 (* this representation is used in the process of learning *)
-type l_logistic_model   = (int, direction_array) logistic_model
-type l_regression_model = (int, direction_array) regression_model
-type l_trees            = (int, direction_array) trees
-type l_tree             = (int, direction_array) tree
-type l_folds            = (int, direction_array) folds
-type l_fold             = (int, direction_array) fold
+type 'c l_logistic_model   = (int, direction_array, 'c) logistic_model
+type 'c l_regression_model = (int, direction_array, 'c) regression_model
+type 'c l_custom_model     = (int, direction_array, 'c) custom_model
+(* type 'c l_ensemble         = (int, direction_array, 'c) ensemble *)
+type 'c l_trees            = (int, direction_array, 'c) trees
+type 'c l_tree             = (int, direction_array, 'c) tree
+type 'c l_folds            = (int, direction_array, 'c) folds
 
-type l_model = (int, direction_array) model
+type 'c l_model = (int, direction_array, 'c) model
 
 (* this more compact representaiton is used for serializing and
    evaluating models outside of the learner *)
-type c_logistic_model   = (float, direction_rle) logistic_model
-type c_regression_model = (float, direction_rle) regression_model
-type c_trees            = (float, direction_rle) trees
-type c_tree             = (float, direction_rle) tree
-type c_folds            = (float, direction_rle) folds
-type c_fold             = (float, direction_rle) fold
+type 'c c_logistic_model   = (float, direction_rle, 'c) logistic_model
+type 'c c_regression_model = (float, direction_rle, 'c) regression_model
+type 'c c_custom_model     = (float, direction_rle, 'c) custom_model
+(* type 'c c_ensemble         = (float, direction_rle, 'c) ensemble *)
+type 'c c_trees            = (float, direction_rle, 'c) trees
+type 'c c_tree             = (float, direction_rle, 'c) tree
+type 'c c_folds            = (float, direction_rle, 'c) folds
 
-type c_model = (float, direction_rle) model
+type 'c c_model = (float, direction_rle, 'c) model
+type c_storage_model = (float, direction_rle) storage_model

@@ -1,6 +1,8 @@
 open Model_t
 open Dog_t
 
+module Array = Utils.Array
+module IntMap = Utils.IntMap
 
 (* translate from the feature type defined in [Dog_t] to [Model_t] *)
 let feature_d_to_m = function
@@ -224,12 +226,19 @@ let square_rle_to_array re_model =
   let open Model_t in
   { re_model with re_folds = folds_rle_to_array re_model.re_folds }
 
-let rle_to_array = function
-  | `Logistic bi_model -> `Logistic (logistic_rle_to_array bi_model)
-  | `Square re_model -> `Square (square_rle_to_array re_model)
-  | `Custom re_model -> `Custom (square_rle_to_array re_model)
+let custom_rle_to_array cu_model =
+  let open Model_t in
+  { cu_model with cu_folds = folds_rle_to_array cu_model.cu_folds }
 
-let rec tree_extract_stats accu stats (tree : ('a, 'b) Model_t.tree) =
+let rle_to_array : ('a, Model_t.direction_rle, 'c) Model_t.model ->
+  ('a, Model_t.category_direction array, 'c) Model_t.model
+  =
+  function
+    | `Logistic bi_model -> `Logistic (logistic_rle_to_array bi_model)
+    | `Square re_model -> `Square (square_rle_to_array re_model)
+    | `Custom custom_model -> `Custom (custom_rle_to_array custom_model)
+
+let rec tree_extract_stats accu stats (tree : ('a, 'b, 'c) Model_t.tree) =
   match tree with
     | `Leaf _ -> stats :: accu
     | `OrdinalNode on ->
@@ -240,3 +249,81 @@ let rec tree_extract_stats accu stats (tree : ('a, 'b) Model_t.tree) =
       tree_extract_stats
         (tree_extract_stats accu cn.cn_left_stats cn.cn_left_tree)
         cn.cn_right_stats cn.cn_right_tree
+
+let convert_cu_point levels_to_values point =
+  let { s_gamma; s_n; s_loss } = point in
+  let s_gamma = IntMap.find s_gamma levels_to_values in
+  { s_gamma;
+    s_n;
+    s_loss;
+  }
+
+let rec convert_cu_tree levels_to_values cu_tree = match cu_tree with
+  | (`Leaf gamma) -> `Leaf (IntMap.find gamma levels_to_values)
+
+  | `CategoricalNode {
+    cn_feature_id;
+    cn_category_directions;
+    cn_left_tree;
+    cn_right_tree;
+    cn_left_stats;
+    cn_right_stats;
+  } ->
+    let cn_left_tree = convert_cu_tree levels_to_values cn_left_tree in
+    let cn_right_tree = convert_cu_tree levels_to_values cn_right_tree in
+    let cn_left_stats = convert_cu_point levels_to_values cn_left_stats in
+    let cn_right_stats = convert_cu_point levels_to_values cn_right_stats in
+    `CategoricalNode {
+      cn_feature_id;
+      cn_category_directions;
+      cn_left_tree;
+      cn_right_tree;
+      cn_left_stats;
+      cn_right_stats;
+    }
+
+  | `OrdinalNode {
+    on_feature_id;
+    on_split;
+    on_left_tree;
+    on_right_tree;
+    on_left_stats;
+    on_right_stats;
+  } ->
+    let on_left_tree = convert_cu_tree levels_to_values on_left_tree in
+    let on_right_tree = convert_cu_tree levels_to_values on_right_tree in
+    let on_left_stats = convert_cu_point levels_to_values on_left_stats in
+    let on_right_stats = convert_cu_point levels_to_values on_right_stats in
+    `OrdinalNode {
+      on_feature_id;
+      on_split;
+      on_left_tree;
+      on_right_tree;
+      on_left_stats;
+      on_right_stats;
+    }
+
+let convert_cu_fold levels_to_values cu_fold =
+  let { fold_id; mean; trees } = cu_fold in
+  let mean = IntMap.find mean levels_to_values in
+  let trees = List.map (convert_cu_tree levels_to_values) trees in
+  { fold_id; mean; trees }
+
+let convert_cu_folds levels_to_values cu_folds =
+  List.map (convert_cu_fold levels_to_values) cu_folds
+
+let convert_storage_model storage_model : float c_model = match storage_model with
+  | `Logistic model -> `Logistic model
+  | `Square model -> `Square model
+  | `Custom model ->
+    let { cu_levels; cu_features; cu_num_folds; cu_folds } = model in
+    let levels_to_values : float IntMap.t =
+      Array.foldi_left (fun i accu level -> IntMap.add i level accu)
+        IntMap.empty cu_levels
+    in
+    `Custom {
+      cu_levels;
+      cu_features;
+      cu_num_folds;
+      cu_folds = convert_cu_folds levels_to_values cu_folds;
+    }

@@ -19,8 +19,6 @@ let loss { loss } =
   loss, false (* unlike logistic, square objective
                  has only one metric -- the loss itself *)
 
-type model = Model_t.l_regression_model
-
 let string_of_metrics { n; loss } =
   Printf.sprintf "% 6.2f %.4e" n loss
 
@@ -106,6 +104,7 @@ class splitter
   ~num_observations
   ~min_observations_per_node
   ~force_mean
+  : [int] Loss.splitter
   =
   (* The decision function can only select from among the
      action values provided in the ys table *)
@@ -113,9 +112,15 @@ class splitter
   let max_f = m - 1 in
 
   let () = Utils.epr "[INFO] custom model with %d levels\n%!" m in
-  let () = List.iteri (fun i feature ->
+  let levels = List.mapi (fun i feature ->
     let descr = Feat_utils.string_descr_of_feature feature in
-    Utils.epr "[INFO] level % 3d: %s\n%!" i descr
+    match descr with
+      | RE (_#digit)* Lazy ((["+-"]? ((digit* '.' digit* ) | digit+)) (["eE"]["+-"]?digit+)? as num:float) ->
+        Utils.epr "[INFO] level % 3d: %s -> %6.4e\n%!" i descr num;
+        num
+    | _ ->
+      Utils.epr "[WARN] level % 3d: %s does not express a float value, defaultint to %d\n%!" i descr i;
+      float i
   ) y_features in
 
   let ys = y_repr_table optimization y_features n_rows in
@@ -203,8 +208,7 @@ class splitter
     method boost gamma : [ `NaN of int | `Ok ] =
       let savings = ref _0 in
       Array.iteri (
-        fun i gamma_if ->
-          let gamma_i = int_of_float gamma_if in
+        fun i gamma_i ->
           let wi = weights.(i) in
           if classify_float wi <> FP_zero then (
             (* update [f.(i)] *)
@@ -253,7 +257,7 @@ class splitter
     method best_split
              (monotonicity : Dog_t.monotonicity)
              feature
-           : (float * Proto_t.split) option
+           : (float * int Proto_t.split) option
       =
       let feature_id = Feat_utils.id_of_feature feature in
 
@@ -444,14 +448,14 @@ class splitter
                 if is_split_better then (
                   let left = {
                     s_n = left_n;
-                    s_gamma = float left_gamma;
+                    s_gamma = left_gamma;
                     s_loss = left_loss;
                   }
                   in
 
                   let right = {
                     s_n = right_n;
-                    s_gamma = float right_gamma;
+                    s_gamma = right_gamma;
                     s_loss = right_loss;
                   }
                   in
@@ -546,14 +550,14 @@ class splitter
                 if is_split_better then (
                   let left = {
                     s_n = left_n;
-                    s_gamma = float left_gamma;
+                    s_gamma = left_gamma;
                     s_loss = left_loss;
                   }
                   in
 
                   let right = {
                     s_n = right_n;
-                    s_gamma = float right_gamma ;
+                    s_gamma = right_gamma ;
                     s_loss = right_loss;
                   }
                   in
@@ -636,7 +640,7 @@ class splitter
     method metrics_header =
       Printf.sprintf "% 5s % 11s % 11s % 11s%%" "n" "obj" "delta" "delta"
 
-    method mean_model ~in_set ~out_set : float =
+    method mean_model ~in_set ~out_set : int =
       match force_mean with
         | Some gamma0 ->
           let (wrk_n,val_n,wrk_loss,val_loss) = Array.foldi_left (
@@ -651,9 +655,8 @@ class splitter
           let l_i = wrk_loss /. wrk_n in
           let l_o = val_loss /. val_n in
           mean_model_loss <- (l_i, l_o);
-          let gamma = float gamma0 in
-          Utils.epr "[DEBUG mean_model] gamma=%d->%.2f\n%!" gamma0 gamma;
-          gamma
+          Utils.epr "[DEBUG mean_model] gamma=%d->%.2f\n%!" gamma0 nan;
+          gamma0
         | None ->
           let sum_wrk_n = ref 0.0 in
           let sum_val_n = ref 0.0 in
@@ -673,14 +676,22 @@ class splitter
           let l_i = wrk_loss /. !sum_wrk_n in
           let l_o = sum_val_ys.(gamma0) /. !sum_val_n in
           mean_model_loss <- (l_i, l_o);
-          let gamma = float gamma0 in
-          Utils.epr "[DEBUG mean_model] gamma=%d->%.2f\n%!" gamma0 gamma;
-          gamma
+          Utils.epr "[DEBUG mean_model] gamma=%d -> %f\n%!" gamma0 nan;
+          gamma0
 
-    method write_model re_folds re_features out_buf =
+    method write_model cu_folds cu_features out_buf =
       let open Model_t in
-      let re_num_folds = List.length re_folds in
-      let model = `Custom { re_num_folds; re_folds; re_features } in
-      Model_j.write_c_model out_buf model
+      let cu_num_folds = List.length cu_folds in
+      let cu_levels = Array.of_list levels in
+      let model = `Custom {
+        cu_num_folds;
+        cu_folds;
+        cu_features;
+        cu_levels;
+      } in
+      Model_j.write_c_storage_model out_buf model
 
+    method na = -1
+    method shrink learning_rate tree = tree
+    method gamma_to_string gamma = string_of_int gamma
   end

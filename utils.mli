@@ -64,6 +64,8 @@ val abspath : string -> string
 module List : sig
   include module type of List
   val iteri : (int -> 'a -> unit) -> 'a list -> unit
+  val foldi_left_from : (int -> 'a -> 'b -> 'a) -> int -> 'a -> 'b list -> 'a
+  val foldi_left : (int -> 'a -> 'b -> 'a) -> 'a -> 'b list -> 'a
   val first : int -> 'a list -> 'a list
 end
 
