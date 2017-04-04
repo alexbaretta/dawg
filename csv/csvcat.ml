@@ -38,6 +38,15 @@ let pr_strings ?(sep=",") out strings =
   out (String.concat sep strings);
   out "\n"
 
+let pr_header ?sep out header =
+  let strings = List.map (function
+    | col_name, `Untyped -> col_name
+    | col_name, `Cat -> col_name ^ "[cat]"
+    | col_name, `Num -> col_name ^ "[num]"
+  ) header
+  in
+  pr_strings ?sep out strings
+
 let pr_dense_row out row =
   iter_sep (fun v -> print_string (string_of_value v))
     (fun () -> out ",") row;
@@ -184,7 +193,7 @@ let parse_incl_excl_spec = function
 let included_columns_of_spec header incl_excl_spec_as_list =
   let incl_excl_spec = parse_incl_excl_spec incl_excl_spec_as_list in
   let num_columns, column_set = List.fold_left (
-      fun (column_index, column_set) column_name ->
+      fun (column_index, column_set) (column_name, column_type) ->
         column_index + 1, ColumnSet.add (column_index, column_name) column_set
     ) (0, ColumnSet.empty) header in
   let incl_excl_set =
@@ -287,12 +296,9 @@ let main input_path output_path incl_excl_spec_as_list header_only no_header =
       match incl_excl_spec_as_list with
         | [] ->
           (* no spec: echo every column *)
-          if header_only then
-            pr_strings ~sep:"\n" out header
-          else (
-            pr_strings out header;
+          pr_header ~sep:"\n" out header;
+          if not header_only then
             loop_all_columns next_row out
-          )
 
         | _ ->
           (* have spec: analyze it, and render only the desired
@@ -309,7 +315,7 @@ let main input_path output_path incl_excl_spec_as_list header_only no_header =
 
           (* print subset of header *)
           iteri (
-            fun index has_prev column_name ->
+            fun index has_prev (column_name, column_type) ->
               if is_column_included.(index) then (
                 if has_prev then
                   out header_sep;

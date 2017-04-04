@@ -167,6 +167,8 @@ and header = parse
   | not_special+
       { STRING (lexeme lexbuf) }
 
+  | "[cat]" | "[CAT]" { CAT }
+  | "[num]" | "[NUM]" { NUM }
 
 and single_quoted_string l = parse
   | '\''
@@ -223,6 +225,8 @@ and escaped_char = parse
     | FLOAT f   -> sprintf "FLOAT(%f)" f
     | COMMENT s -> sprintf "COMMENT(%s)" s
 
+    | CAT -> "CAT"
+    | NUM -> "NUM"
     | COMMA  -> ","
     | RCURLY -> "}"
     | LCURLY -> "{"

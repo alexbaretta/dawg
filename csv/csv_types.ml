@@ -1,3 +1,7 @@
+type col_type = [ `Cat | `Num | `Untyped ]
+type col_header = string * col_type
+type header = col_header list
+
 type value = [ `Int of int | `Float of float | `String of string ]
 type dense = value list
 type sparse = (int * value) list

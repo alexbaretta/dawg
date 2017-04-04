@@ -6,12 +6,12 @@ open Dog_t
 module List = Utils.List
 
 
-let index =
+let header_index =
   let rec loop i map = function
     | [] -> map
-    | h :: t ->
-      let map = Utils.IntMap.add i h map in
-      loop (i+1) map t
+    | (col_name, col_type) :: tl ->
+      let map = Utils.IntMap.add i col_name map in
+      loop (i+1) map tl
   in
   fun list ->
     loop 0 Utils.IntMap.empty list
@@ -745,7 +745,7 @@ let pr_hist j i_values =
 
 let read_cells_write_features work_dir ~num_cell_files ~num_rows header config =
   let feature_id_to_name =
-    let idx = index header in
+    let idx = header_index header in
     fun feature_id ->
       Utils.IntMap.find_opt feature_id idx
   in

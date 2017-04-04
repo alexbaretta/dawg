@@ -1,9 +1,5 @@
 %{
 
-type dense = string list
-type sparse = (int * string) list
-type row = [ `Dense of dense | `EOF | `Sparse of sparse ]
-
 %}
 
 %token <string> STRING
@@ -11,6 +7,8 @@ type row = [ `Dense of dense | `EOF | `Sparse of sparse ]
 %token <int> POS_INT
 %token <float> FLOAT
 
+%token CAT
+%token NUM
 %token LCURLY
 %token RCURLY
 %token COMMA
@@ -21,20 +19,24 @@ type row = [ `Dense of dense | `EOF | `Sparse of sparse ]
 %start header
 %start row
 
-%type <string list> header
+%type <Csv_types.header> header
 %type <Csv_types.row> row
 
 %%
 
 header:
-| strings EOL { $1 }
-| strings COMMENT EOL { $1 }
-| newlines strings EOL { $2 }
-| newlines strings COMMENT EOL { $2 }
+| columns EOL { $1 }
+| columns COMMENT EOL { $1 }
+| newlines columns EOL { $2 }
+| newlines columns COMMENT EOL { $2 }
 
-strings:
-| STRING COMMA strings { $1 :: $3 }
-| STRING { [ $1 ] }
+columns:
+| STRING COMMA columns { ($1, `Untyped) :: $3 }
+| STRING { [ ($1, `Untyped) ] }
+| STRING CAT COMMA columns { ($1, `Cat) :: $4 }
+| STRING CAT { [ ($1, `Cat) ] }
+| STRING NUM COMMA columns { ($1, `Num) :: $4 }
+| STRING NUM { [ ($1, `Num) ] }
 
 value:
 | NEG_INT { (`Int $1) }

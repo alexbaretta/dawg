@@ -103,7 +103,7 @@ let mk_get features header =
   in
 
   List.iteri (
-    fun column_id column_name ->
+    fun column_id (column_name, column_type) ->
       Hashtbl.replace column_name_to_column_id column_name column_id
   ) header;
 
