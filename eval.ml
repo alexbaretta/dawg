@@ -1,6 +1,7 @@
 (* evaluate binary classification models over a csv file *)
 
-exception TypeMismatch of (int * Csv_types.value)
+open Csv_types
+exception TypeMismatch of (int * Csv_types.parsed_value)
 
 (* model calls or a categorical (ordinal) type, but value
    presented is ordinal (categorical) *)
@@ -181,9 +182,9 @@ let mk_get features header =
   ) features;
 
   let translate_value feature_id = function
-    | `Int i -> `Float (float_of_int i) (* cast *)
-    | `Float f -> `Float f
-    | `String category ->
+    | Int i -> `Float (float i)
+    | Float f -> `Float f (* cast *)
+    | String category ->
       try
         let entry = Hashtbl.find feature_id_to_categorical_entry feature_id in
         try
@@ -198,30 +199,10 @@ let mk_get features header =
               raise (UnknownCategory (feature_id, category))
 
       with Not_found ->
-        raise (TypeMismatch (feature_id, `String category))
+        raise (TypeMismatch (feature_id, String category))
   in
 
-  let get = function
-    | `Dense dense ->
-      (* convert to array, for fast random access *)
-      let dense = Array.of_list dense in
-      let len_dense = Array.length dense in
-      fun kind feature_id ->
-        assert ( feature_id >= 0 );
-        let column_id =
-          try
-            Hashtbl.find feature_id_to_column_id feature_id
-          with Not_found ->
-            pr "feature with id %d is anonymous" feature_id;
-            exit 1
-        in
-        assert( column_id >= 0 );
-        if column_id < len_dense then
-          translate_value feature_id dense.(column_id)
-        else
-          raise (ColumnOutOfBounds feature_id)
-
-    | `Sparse (sparse : (int * Csv_types.value) list) ->
+  let get (sparse : (int * Csv_types.parsed_value) list) =
       (* convert to hashtable, for faster random access *)
       let feature_id_to_value = Hashtbl.create 10 in
       List.iter (
@@ -389,11 +370,12 @@ let model_eval
       | Some h -> fprintf pch "%s\n" h
       | None -> ()
   in
+  let parse_row = Csv_types.parse_row header in
   let rec loop row_num pch =
     match next_row () with
       | `Ok `EOF -> ()
-      | `Ok ((`Dense _ | `Sparse _ ) as row) ->
-
+      | `Ok ((`Dense _ | `Sparse _ ) as csv_row) ->
+        let row = parse_row csv_row in
         let is_ok =
           try
             let f = eval_folds (get row) num_folds folds in
@@ -405,9 +387,9 @@ let model_eval
                       of that feature\n%!"
                 row_num
                 (match value with
-                  | `Int i -> sprintf "integer value %d" i
-                  | `Float f -> sprintf "float value %f" f
-                  | `String s -> sprintf "string value %S" s
+                  | Int i -> sprintf "integer value %d" i
+                  | Float f -> sprintf "float value %f" f
+                  | String s -> sprintf "string value %S" s
                 )
                 feature_id;
               false

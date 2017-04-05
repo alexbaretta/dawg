@@ -6,7 +6,8 @@ BYTE_ENABLED = true
 OCAMLFLAGS  += -dtypes
 
 FILES[] = csv_lexer csv_parser csv_io csv_types
-OCAMLPACKS = cmdliner pcre
+OCAMLPACKS = cmdliner pcre camlp4
+OCAMLFINDFLAGS += -syntax camlp4o
 
 LIBS = csv
 OCAML_LIBS = csv

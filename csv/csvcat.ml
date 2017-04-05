@@ -2,6 +2,10 @@ open Printf
 
 (* apply [f] to each element of the input list, calling [sep]
    inbetween such elements *)
+let exec_opt f opt = match opt with
+  | Some x -> f x
+  | None -> ()
+
 let rec iter_sep f sep = function
   | a :: b :: rest ->
       f a;
@@ -30,9 +34,10 @@ let iteri f list =
 
 
 let string_of_value = function
-  | `Int i -> string_of_int i
-  | `Float f -> string_of_float f
+  | `Int i -> i
+  | `Float f -> f
   | `String s -> "\"" ^ s ^ "\""
+  | `Default -> ""
 
 let pr_strings ?(sep=",") out strings =
   out (String.concat sep strings);
@@ -48,8 +53,10 @@ let pr_header ?sep out header =
   pr_strings ?sep out strings
 
 let pr_dense_row out row =
-  iter_sep (fun v -> print_string (string_of_value v))
-    (fun () -> out ",") row;
+  iter_sep (function
+    | None -> ()
+    | Some v -> print_string (string_of_value v)
+  ) (fun () -> out ",") row;
   out "\n"
 
 let pr_sparse_row out pairs =
@@ -65,12 +72,12 @@ let pr_sparse_row out pairs =
 
 let pr_dense_subset_row out row column_included =
   iteri (
-    fun index has_prev value ->
+    fun index has_prev value_opt ->
       if column_included.(index) then (
         if has_prev then
           out ",";
 
-        out (string_of_value value);
+        exec_opt (fun x -> out (string_of_value x)) value_opt;
         true
       )
       else

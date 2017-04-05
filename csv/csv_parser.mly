@@ -3,9 +3,9 @@
 %}
 
 %token <string> STRING
-%token <int> NEG_INT
-%token <int> POS_INT
-%token <float> FLOAT
+%token <string> NEG_INT
+%token <string> POS_INT
+%token <string> FLOAT
 
 %token CAT
 %token NUM
@@ -45,7 +45,7 @@ value:
 | STRING { (`String $1) }
 
 value_opt:
-| value { Some $1}
+| value { Some $1 }
 | { None }
 
 values:
@@ -61,11 +61,11 @@ row:
 | EOF { `EOF }
 
 row_sans_nl:
-| dense_row { $1 }
+| dense_row { `Dense $1 }
 | sparse_row { `Sparse $1 }
 
 dense_row:
-| values { Csv_types.parse_opt_row $1 }
+| values { $1 }
 
 sparse_row:
 | LCURLY pairs RCURLY { $2 }
@@ -76,7 +76,7 @@ pairs:
 | pair { [ $1 ] }
 
 pair:
-| POS_INT value { $1, $2 }
+| POS_INT value { int_of_string $1, $2 }
 
 newlines:
 | EOL { () }

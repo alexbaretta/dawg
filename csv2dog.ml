@@ -1,7 +1,9 @@
 (** create a training set from a csv file *)
 open Csv_io
+open Csv_types
 open Printf
 open Dog_t
+
 
 module List = Utils.List
 
@@ -23,7 +25,7 @@ type 'a cell = {
   cell_value: 'a;
 }
 
-type csv_cell = Csv_types.value cell
+type csv_cell = Csv_types.parsed_value cell
 
 (* order by feature_id [j_*] in ascending order, then by observation
    in ascending order *)
@@ -34,9 +36,9 @@ let compare_cells c1 c2 =
 
 (* the type of a value is encoded in two bits *)
 let tag_of_cell = function
-  | { cell_value = `Int _ }    -> 0b01
-  | { cell_value = `Float _ }  -> 0b10
-  | { cell_value = `String _ } -> 0b11
+  | { cell_value = Int _ }    -> 0b01
+  | { cell_value = Float _ }  -> 0b10
+  | { cell_value = String _ } -> 0b11
 
 let map_cell f cell = {
   cell_column = cell.cell_column;
@@ -76,11 +78,11 @@ let write_cells_to_file work_dir file_num (cells : csv_cell array) =
     let j = cell.cell_column in
     let i = cell.cell_row in
     match cell.cell_value with
-      | `Int value ->
+      | Int value ->
         TS_b.write_int_cell bobuf (j, i, value)
-      | `Float value ->
+      | Float value ->
         TS_b.write_float_cell bobuf (j, i, value)
-      | `String value ->
+      | String value ->
         TS_b.write_string_cell bobuf (j, i, value)
   done;
   Bi_outbuf.flush_channel_writer bobuf;
@@ -107,18 +109,18 @@ let cell_stream path =
           | _ -> assert false
       in
       match tag with
-        | 0b01 -> (* [`Int] *)
+        | 0b01 -> (* [Int] *)
           let cell_column, cell_row, value =
             TS_b.read_int_cell bibuf in
-          Some {cell_column; cell_row; cell_value = `Int value }
-        | 0b10 -> (* [`Float] *)
+          Some {cell_column; cell_row; cell_value = Int value }
+        | 0b10 -> (* [Float] *)
           let cell_column, cell_row, value =
             TS_b.read_float_cell bibuf in
-          Some { cell_column; cell_row; cell_value = `Float value }
-        | 0b11 -> (* [`String] *)
+          Some { cell_column; cell_row; cell_value = Float value }
+        | 0b11 -> (* [String] *)
           let cell_column, cell_row, value =
             TS_b.read_string_cell bibuf in
-          Some { cell_column; cell_row; cell_value = `String value }
+          Some { cell_column; cell_row; cell_value = String value }
         | 0b00 ->
           (* the trailing, unused bits of a tag4, indicating that we
              are at the end of the input buffer *)
@@ -147,7 +149,7 @@ type create = {
 let dummy_cell = {
   cell_row = -1;
   cell_column = -1;
-  cell_value = `Float nan;
+  cell_value = Float nan;
 }
 
 (* i := row index
@@ -180,6 +182,7 @@ let write_cells_to_work_dir work_dir header next_row config =
     | l -> Some (List.length l)
   in
 
+  let parse_row = Csv_types.parse_row header in
   let append_cell ~cells ~mcore ~c ~f (cell : csv_cell) =
     if c < config.max_cells_in_mem then (
       cells.( c ) <- cell;
@@ -224,39 +227,13 @@ let write_cells_to_work_dir work_dir header next_row config =
         else
           cell_row, f
 
-      | `Ok (`Dense dense) ->
-        let cells, mcore, dense_row_length, c, f = List.fold_left (
-            fun (cells, mcore, cell_column, c, f) cell_value ->
-              let cells, mcore, c, f =
-                let cell = { cell_column; cell_row; cell_value } in
-                append_cell ~cells ~mcore ~c ~f cell
-              in
-              cells, mcore, cell_column + 1, c, f
-          ) (cells, mcore, 0, c, f) dense in
-
-        (* check that all dense rows have the same length *)
-        let dense_row_length_opt =
-          match prev_dense_row_length_opt with
-            | None -> Some dense_row_length (* first dense row *)
-            | Some prev_dense_row_length ->
-              if not config.allow_variable_length_dense_rows &&
-                prev_dense_row_length <> dense_row_length then (
-                   Printf.printf "dense row %d has length %d, which is \
-                               different than length %d of previous \
-                               dense rows.\n%!"
-                  (cell_row+1) dense_row_length prev_dense_row_length;
-                exit 1
-              );
-              Some dense_row_length
-        in
-        loop ~task_start_time ~cells ~mcore ~cell_row:(cell_row + 1) ~f ~c dense_row_length_opt
-
-      | `Ok (`Sparse sparse) ->
+      | `Ok csv_row ->
+        let row = parse_row csv_row in
         let cells, mcore, c, f = List.fold_left (
             fun (cells, mcore, c, f) (cell_column, cell_value) ->
               let cell = { cell_column; cell_row; cell_value } in
               append_cell ~cells ~mcore ~c ~f cell
-          ) (cells, mcore, c, f) sparse in
+          ) (cells, mcore, c, f) row in
         loop ~task_start_time ~cells ~mcore ~cell_row:(cell_row+1) ~f ~c prev_dense_row_length_opt
 
       | `SyntaxError err ->
@@ -332,9 +309,9 @@ let kind_count_of_histogram hist =
   Hashtbl.fold (
     fun value count kc ->
       match value with
-        | `Float _ -> { kc with n_float = kc.n_float + count }
-        | `Int _ -> { kc with n_int = kc.n_int + count }
-        | `String _ -> { kc with n_string = kc.n_string + count }
+        | Float _ -> { kc with n_float = kc.n_float + count }
+        | Int _ -> { kc with n_int = kc.n_int + count }
+        | String _ -> { kc with n_string = kc.n_string + count }
 
   ) hist {n_float=0; n_int=0; n_string=0}
 
@@ -357,7 +334,7 @@ let indexes_of_cat values cat_x =
       fun (i, indexes) (ii, value) ->
         assert (i = ii);
         match value with
-          | `String cat ->
+          | String cat ->
             let indexes =
               if cat = cat_x then
                 i :: indexes
@@ -365,7 +342,7 @@ let indexes_of_cat values cat_x =
                 indexes
             in
             i+1, indexes
-          | `Int _ | `Float _ -> assert false
+          | Int _ | Float _ -> assert false
     ) (0, []) values in
   indexes
 
@@ -386,9 +363,9 @@ let categorical_feature j kc hist n i_values feature_id_to_name config =
         assert (count > 0);
         let s_value =
           match value with
-            | `String s -> s
-            | `Float _
-            | `Int _ -> assert false
+            | String s -> s
+            | Float _
+            | Int _ -> assert false
         in
         let category_to_count = (s_value, count) :: category_to_count in
         category_to_count, num_categories + 1
@@ -416,8 +393,8 @@ let categorical_feature j kc hist n i_values feature_id_to_name config =
       let i_cats = List.rev_map (
         fun (i, value) ->
           match value with
-            | `Int _ | `Float _ -> assert false
-            | `String cat ->
+            | Int _ | Float _ -> assert false
+            | String cat ->
               i, Hashtbl.find cat_to_cat_id cat
       ) i_values (* i_values are in i-reverse order *) in
 
@@ -464,8 +441,8 @@ let categorical_feature j kc hist n i_values feature_id_to_name config =
     let i_cats = List.rev_map (
       fun (i, value) ->
         match value with
-          | `Int _ | `Float _ -> assert false
-          | `String cat ->
+          | Int _ | Float _ -> assert false
+          | String cat ->
             let cat_id = Hashtbl.find cat_to_cat_id (Some cat) in
             i, cat_id
     ) i_values in (* [i_values] are in i-reversed order *)
@@ -515,8 +492,8 @@ let incr hist ?(by=1) k =
   in
   Hashtbl.replace hist k (count + by)
 
-let float_zero = `Float 0.0
-let int_zero   = `Int   0
+let float_zero = Float 0.0
+let int_zero   = Int   0
 
 (* unbox, and convert to list, so we can sort, and return the list and
    the total number of distinct values *)
@@ -576,7 +553,7 @@ let float_or_int_feature
       incr hist_table ~by:n_anonymous float_zero;
 
     (* if this is a float feature, merge the number of (`Int 0) and
-       (`Float 0.0) *)
+       (Float 0.0) *)
     (try
        let int_zero_count = Hashtbl.find hist_table int_zero in
        Hashtbl.remove hist_table int_zero;
@@ -654,11 +631,11 @@ let mixed_type_feature_exn mt_feature_id mt_feature_name i_values =
   let mt_string_values, mt_float_values, mt_int_values = List.fold_left (
       fun (string_values, float_values, int_values) (i, value) ->
         match value with
-          | `String string_value ->
+          | String string_value ->
             string_value :: string_values, float_values, int_values
-          | `Float float_value ->
+          | Float float_value ->
             string_values, float_value :: float_values, int_values
-          | `Int int_value ->
+          | Int int_value ->
             string_values, float_values, int_value :: int_values
     ) ([], [], []) i_values
   in
@@ -681,9 +658,9 @@ let write_feature j i_values n dog feature_id_to_name config =
       fun kind_count (i, value) ->
         incr hist value;
         match value with
-          | `Float _  -> { kind_count with n_float  = kind_count.n_float  + 1 }
-          | `Int _    -> { kind_count with n_int    = kind_count.n_int    + 1 }
-          | `String _ -> { kind_count with n_string = kind_count.n_string + 1 }
+          | Float _  -> { kind_count with n_float  = kind_count.n_float  + 1 }
+          | Int _    -> { kind_count with n_int    = kind_count.n_int    + 1 }
+          | String _ -> { kind_count with n_string = kind_count.n_string + 1 }
 
     ) {n_float=0; n_int=0; n_string=0} i_values in
   if kind_count.n_string > 0 then

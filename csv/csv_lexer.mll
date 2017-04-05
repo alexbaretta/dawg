@@ -31,61 +31,20 @@ let raise_int_overflow lexbuf ~start ~stop =
 let dec c =
   Char.code c - 48
 
-let extract_positive_int lexbuf =
-  let start = lexbuf.lex_start_pos in
-  let stop = lexbuf.lex_curr_pos in
-  let s = lexbuf.lex_buffer in
-  let n = ref 0 in
-  for i = start to stop - 1 do
-    if !n >= max10 then
-      raise_int_overflow lexbuf ~start ~stop
-    else
-      n := 10 * !n + dec s.[i]
-  done;
-  if !n < 0 then
-    raise_int_overflow lexbuf ~start ~stop
-  else
-    !n
-
-let extract_negative_int lexbuf =
-  let start = lexbuf.lex_start_pos + 1 in
-  let stop = lexbuf.lex_curr_pos in
-  let s = lexbuf.lex_buffer in
-  let n = ref 0 in
-  for i = start to stop - 1 do
-    if !n <= min10 then
-      raise_int_overflow lexbuf ~start ~stop
-    else
-      n := 10 * !n - dec s.[i]
-  done;
-  if !n > 0 then
-    raise_int_overflow lexbuf ~start ~stop
-  else
-    !n
-
-let float_or_int_of_string s =
-  let f = float_of_string s in
-  let i = truncate f in
-  if f -. (float i) = 0.0 then
-    if i <= 0 then
-      NEG_INT i
-    else
-      POS_INT i
-  else
-    FLOAT f
-
 }
 
 
 (* also from Yojson *)
 let digit = ['0'-'9']
 let nonzero = ['1'-'9']
+let zero = ['0']
 let digits = digit+
 let e = ['e' 'E']['+' '-']?
 let exp = e digits
+let sign = ('-'|'+')
 
 let positive_int = digits (* (digit | nonzero digits) *)
-let float = ('-'|'+')? (
+let float = sign? (
     positive_int  '.' digits?
   | positive_int? '.' digits+
   | positive_int exp
@@ -123,19 +82,17 @@ rule row = parse
       { STRING (single_quoted_string [] lexbuf) }
 
   | positive_int
-      { POS_INT (extract_positive_int lexbuf) }
+      { POS_INT (Lexing.lexeme lexbuf) }
 
   | '-' positive_int
-      { NEG_INT (extract_negative_int lexbuf) }
+      { NEG_INT (Lexing.lexeme lexbuf) }
 
-  | '-' positive_int
-      { NEG_INT (extract_negative_int lexbuf) }
-
-  | float
-      { float_or_int_of_string (lexeme lexbuf) }
-  | "inf" ("inity")? { FLOAT max_float }
+  | (positive_int as integer) '.' zero* { POS_INT integer }
+  | (('-' positive_int) as integer) '.' zero* { NEG_INT integer }
+  | float { FLOAT(lexeme lexbuf) }
+  | "inf" ("inity")? { FLOAT "inf" }
   | "-inf" ("inity")?
-  | "neg_inf" ("inity")? { FLOAT (~-. max_float) }
+  | "neg_inf" ("inity")? { FLOAT "-inf" }
 
   (* unquoted string; for a number (float or int) to be
      interpreted as a string, it must be quoted *)
@@ -220,9 +177,9 @@ and escaped_char = parse
 {
   let string_of_tok = function
     | STRING s  -> sprintf "STRING(%s)" s
-    | POS_INT i -> sprintf "POS_INT(%d)" i
-    | NEG_INT i -> sprintf "NEG_INT(%d)" i
-    | FLOAT f   -> sprintf "FLOAT(%f)" f
+    | POS_INT i -> sprintf "POS_INT(%s)" i
+    | NEG_INT i -> sprintf "NEG_INT(%s)" i
+    | FLOAT f   -> sprintf "FLOAT(%s)" f
     | COMMENT s -> sprintf "COMMENT(%s)" s
 
     | CAT -> "CAT"
