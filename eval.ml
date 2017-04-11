@@ -375,7 +375,7 @@ let model_eval
     match next_row () with
       | `Ok `EOF -> ()
       | `Ok ((`Dense _ | `Sparse _ ) as csv_row) ->
-        let row = parse_row csv_row in
+        let row, _count = parse_row csv_row in
         let is_ok =
           try
             let f = eval_folds (get row) num_folds folds in

@@ -8,6 +8,7 @@ type parsed_value =
   | Int of int
   | Float of float
   | String of string
+type parsed_row = (int * parsed_value) list
 
 type dense = value option list
 type sparse = (int * value) list
@@ -66,27 +67,31 @@ let parse_value (col_header:col_header) csv_value =
       )
 
 let parse_dense_row (header:header) opt_row =
-  let rec loop i accu (header:header) opt_row =
-    match header, opt_row with
+  let rec loop i accu count (header_tl:header) opt_row =
+    match header_tl, opt_row with
       | _ :: header_tl, None :: opt_row_tl ->
-        loop (succ i) accu header_tl opt_row_tl
+        loop (succ i) accu count header_tl opt_row_tl
       | col_header :: header_tl, (Some v) :: opt_row_tl ->
         let parsed = parse_value col_header v in
         let accu = (i,parsed) :: accu in
-        loop (succ i) accu header_tl opt_row_tl
-      | [], [] -> accu
+        let count = count + 1 in
+        loop (succ i) accu count header_tl opt_row_tl
+      | [], [] -> accu, count
       | _ :: _, [] -> failwith "parse_opt_row_sparse: too few values relative to columns"
       | [], _ :: _ -> failwith "parse_opt_row_sparse: too many values relative to columns"
   in
-  loop 0 [] header opt_row
+  loop 0 [] 0 header opt_row
 
 let parse_sparse_row (header:header) =
   let header_table = Hashtbl.create 16 in
+  List.iteri (fun i col_header -> Hashtbl.add header_table i col_header) header;
   fun sparse_row ->
-    List.iteri (fun i col_header -> Hashtbl.add header_table i col_header) header;
-    List.map (fun (i, csv_value) -> (i, parse_value (Hashtbl.find header_table i) csv_value)) sparse_row
+    List.fold_left (
+      fun (accu, count) (i, csv_value) ->
+        ((i, parse_value (Hashtbl.find header_table i) csv_value) :: accu, count+1)
+    ) ([], 0) sparse_row
 
-let parse_row (header:header) =
+let parse_row (header:header) : row -> parsed_row * int =
   let parse_dense = parse_dense_row header in
   let parse_sparse = parse_sparse_row header in
   function

@@ -138,11 +138,12 @@ type create = {
   input_path_opt : string option;
   output_path : string;
   max_density : float;
-  max_cells_in_mem : int;
+  csv_buffer_size : int;
   no_header : bool;
   work_dir : string;
   max_width : int;
   allow_variable_length_dense_rows : bool;
+  max_threads :int;
 }
 
 
@@ -158,10 +159,28 @@ let dummy_cell = {
    f := file index
 *)
 let now () = Unix.gettimeofday ()
+let allocated_mb () : int = truncate (Gc.allocated_bytes () /. 1e6)
+
+let gc_stat =
+  let starting_mb = allocated_mb () in
+object
+  val mutable starting_mb = starting_mb
+  method current_words =
+    let x = allocated_mb () in
+    x - starting_mb
+
+  method reset =
+    let x = allocated_mb () in
+    starting_mb <- x
+end
 
 let write_cells_to_work_dir work_dir header next_row config =
   (* let num_features = List.length header in *)
   let job_start_time = now () in
+  let mcore = match config.max_threads with
+    | 0 -> Mcore.create_msynchronous ()
+    | n -> Mcore.create_mprocess n
+  in
   let log_task task_start_time fmt =
     let now = now () in
     Utils.pr ("[% 10.3f][% 7.3f]%s" ^^ fmt) (now -. job_start_time) (now -. task_start_time)
@@ -183,58 +202,65 @@ let write_cells_to_work_dir work_dir header next_row config =
   in
 
   let parse_row = Csv_types.parse_row header in
-  let append_cell ~cells ~mcore ~c ~f (cell : csv_cell) =
-    if c < config.max_cells_in_mem then (
-      cells.( c ) <- cell;
-      cells, mcore, c + 1, f
-    )
+  let write_rows ~rows ~file_num =
+    log "[STRT] sorting files=%d ... \n%!" file_num;
+    let task_start_time = now () in
+    let (parsed_rows: (int * Csv_types.parsed_row) list), count =
+      List.fold_left (fun (accu, count) (irow, row) ->
+        let parsed_row, this_count = parse_row row in
+        (irow, parsed_row) :: accu, count + this_count
+      ) ([], 0) rows in
+    let cells = Array.make count dummy_cell in
+    let count_ =
+      List.fold_left (fun icell (irow, (parsed_row: Csv_types.parsed_row)) ->
+        List.fold_left (fun icell (j, parsed_value) ->
+          let cell = { cell_column=j; cell_row=irow; cell_value=parsed_value } in
+          cells.(icell) <- cell;
+          succ icell
+        ) icell parsed_row
+      ) 0 parsed_rows
+    in
+    assert(count_ = count);
+    Array.fast_sort compare_cells cells;
+    write_cells_to_file work_dir file_num cells;
+    log_task task_start_time "[DONE] sorting files=%d cells=%d\n%!" file_num count
+  (* let cells = Array.make config.max_cells_in_mem dummy_cell in *)
+  (* cells.(0) <- cell; *)
+  in
+  let append_row ~rows ~irow ~file_num row =
+    let rows = (irow, row) :: rows in
+    let words = gc_stat # current_words in
+    if words < config.csv_buffer_size then
+      rows, file_num
     else (
+      gc_stat # reset;
       Mcore.spawn mcore (fun () ->
-        log "[STRT] sorting files=%d cells=%d ... \n%!" f c;
-        let task_start_time = now () in
-        Array.fast_sort compare_cells cells;
-        write_cells_to_file work_dir f cells;
-        log_task task_start_time "[DONE] sorting files=%d cells=%d\n%!" f c;
+        write_rows ~rows ~file_num
       ) ();
-      let cells = Array.make config.max_cells_in_mem dummy_cell in
-      cells.(0) <- cell;
-      cells, mcore, 1, f + 1
+      [], file_num + 1
     )
   in
 
-  let rec loop ~task_start_time ~cells ~mcore ~cell_row ~f ~c prev_dense_row_length_opt =
+  let rec loop ~task_start_time ~rows ~irow ~file_num prev_dense_row_length_opt =
     let task_start_time =
-      if cell_row mod 10000 = 0 then (
-        log_task task_start_time "[LOOP] files=%d rows=%d\n%!" f cell_row;
+      if irow mod 10000 = 0 then (
+        log_task task_start_time "[LOOP] files=%d rows=%d\n%!" file_num irow;
         now ()
       ) else task_start_time
     in
 
     match next_row () with
       | `Ok `EOF ->
-        if c > 0 then (
-          (* write trailing cells, if there are any *)
-          log "[STRT] sorting files=%d cells=%d ... \n%!" f c;
-          let trailing_cells = Array.make c dummy_cell in
-          let task_start_time = now () in
-          (* copy *)
-          Array.blit cells 0 trailing_cells 0 c;
-          Array.fast_sort compare_cells trailing_cells;
-          write_cells_to_file work_dir f trailing_cells;
-          log_task task_start_time "[DONE] sorting files=%d cells=%d\n%!" f c;
-          cell_row, f+1
-        )
-        else
-          cell_row, f
+        if rows <> [] then (
+          write_rows ~rows ~file_num;
+          irow, file_num + 1
+        ) else
+          irow, file_num
 
       | `Ok csv_row ->
-        let row = parse_row csv_row in
-        let cells, mcore, c, f = List.fold_left (
-            fun (cells, mcore, c, f) (cell_column, cell_value) ->
-              let cell = { cell_column; cell_row; cell_value } in
-              append_cell ~cells ~mcore ~c ~f cell
-          ) (cells, mcore, c, f) row in
-        loop ~task_start_time ~cells ~mcore ~cell_row:(cell_row+1) ~f ~c prev_dense_row_length_opt
+        (* let row = parse_row csv_row in *)
+        let rows, file_num = append_row ~rows ~irow ~file_num csv_row in
+        loop ~task_start_time ~rows ~irow:(irow+1) ~file_num prev_dense_row_length_opt
 
       | `SyntaxError err ->
         print_endline (Csv_io.string_of_error_location err);
@@ -250,9 +276,7 @@ let write_cells_to_work_dir work_dir header next_row config =
         exit 1
 
   in
-  let cells = Array.make config.max_cells_in_mem dummy_cell in
-  let mcore = Mcore.create_mprocess 2 in
-  let result = loop ~task_start_time:job_start_time ~cells ~mcore ~cell_row:0 ~f:0 ~c:0 header_length_opt in
+  let result = loop ~task_start_time:job_start_time ~irow:0 ~file_num:0 ~rows:[] header_length_opt in
   let success = Mcore.sync mcore in
   if not success then (
     Utils.epr "[ERROR] one sorting task failed\n%!";
@@ -273,8 +297,8 @@ let csv_to_cells work_dir config =
   match Csv_io.of_channel ~no_header ch with
     | `Ok (header, next_row) ->
       let num_rows, num_cell_files =
-        write_cells_to_work_dir work_dir header next_row
-          config in
+        write_cells_to_work_dir work_dir header next_row config
+      in
       close_in ch;
       header, num_rows, num_cell_files
 
@@ -843,9 +867,10 @@ let create_dog config =
 
 
 module Defaults = struct
+  let max_threads = 2
   let max_width = 8
   let max_density = 0.1
-  let max_cells_in_mem = 10_000_000
+  let csv_buffer_size = 2_000
   let work_dir =
     let home = Unix.getenv "HOME" in
     let dot_dawg = Filename.concat home ".dawg" in
@@ -853,15 +878,15 @@ module Defaults = struct
   let allow_variable_length_dense_rows = false
 end
 
-let csv_to_dog output_path input_path_opt max_density no_header max_cells_in_mem
-    max_width =
+let csv_to_dog output_path input_path_opt max_density no_header csv_buffer_size
+    max_width max_threads =
   if max_density > 1.0 || max_density < 0.0 then (
     printf "max-density must be between 0 and 1 (inclusive)";
     exit 1
   );
 
-  if max_cells_in_mem < 1 then (
-    printf "max-cells-in-mem must be positive";
+  if csv_buffer_size < 1 then (
+    printf "csv-buffer-size must be positive";
     exit 1
   );
 
@@ -875,9 +900,10 @@ let csv_to_dog output_path input_path_opt max_density no_header max_cells_in_mem
     output_path;
     max_density;
     no_header;
-    max_cells_in_mem;
+    csv_buffer_size;
     work_dir = Defaults.work_dir;
     max_width;
+    max_threads;
     allow_variable_length_dense_rows =
       Defaults.allow_variable_length_dense_rows;
   } in
@@ -920,21 +946,26 @@ let commands =
       Arg.(value & flag & info ["h";"no-header"] ~doc)
     in
 
-    let max_cells_in_mem =
-      let doc = "the maximum number of csv data cells that will be held in memory; \
-                 a smaller value will lead to more intermediate files, and overall \
-                 slower processing: defaults to 10_000_000, requiring about 2GB of \
-                 memory." in
-      Arg.(required & opt (some int) (Some Defaults.max_cells_in_mem) &
-           info ["m";"max-cells-in-mem"] ~docv:"INT" ~doc)
+    let csv_buffer_size =
+      let doc = "the maximum amount of csv data that will be held in memory; \
+                 a smaller value will lead to more intermediate files, and \
+                 overall slower processing. Defaults to 2_000 (1GB)." in
+      Arg.(required & opt (some int) (Some Defaults.csv_buffer_size) &
+           info ["m";"csv-buffer-size"] ~docv:"INT (MB)" ~doc)
     in
 
     let max_width =
-      let doc = "the maximum number of bitvectors that can represent a feature; \
+      let doc = "The number of quantization bits to represent a feature; \
                  if 2^max_width is smaller than the number of distinct values of \
                  a feature, the feature will be down-sampled" in
       Arg.(required & opt (some int) (Some Defaults.max_width) &
            info ["w";"max-width"] ~docv:"INT" ~doc)
+    in
+
+    let max_threads =
+      let doc = "Maximum number of concurrent threads" in
+      Arg.(required & opt (some int) (Some Defaults.max_threads) &
+           info ["t";"max-threads"] ~docv:"INT" ~doc)
     in
 
     Term.(
@@ -943,8 +974,9 @@ let commands =
         input_path $
         max_density $
         no_header $
-        max_cells_in_mem $
-        max_width
+        csv_buffer_size $
+        max_width $
+        max_threads
     ),
     Term.info "csv" ~doc
   in
