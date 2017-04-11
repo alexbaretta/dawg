@@ -93,12 +93,19 @@ let default d = function
 module type XSetS = sig
   include Set.S
   val to_list : t -> elt list
+  val of_list : elt list -> t
+  val dedup_list : elt list -> elt list
 end
 
 module XSet ( M : Set.OrderedType) : XSetS with type elt = M.t = struct
   include Set.Make(M)
   let to_list set =
     fold (fun elt accu -> elt :: accu) set []
+
+  let of_list l =
+    List.fold_left (fun accu e -> add e accu) empty l
+
+  let dedup_list l = to_list (of_list l)
 end
 
 module type XMapS = sig
@@ -129,8 +136,16 @@ module Int = struct
   let compare = Pervasives.compare
 end
 
+module Float = struct
+  type t = float
+  let compare = Pervasives.compare
+end
+
 module IntSet = XSet(Int)
 module IntMap = XMap(Int)
+module StringSet = XSet(String)
+module StringMap = XMap(String)
+module FloatSet = XSet(Float)
 
 (* [log2 x] returns pair [y, s], where [y + 1] is the highest bit index
    whose of [x] value is 1; and [s], the sum of bits whose

@@ -6,7 +6,9 @@ open Dog_t
 
 
 module List = Utils.List
-
+module IntSet = Utils.IntSet
+module StringSet = Utils.StringSet
+module FloatSet = Utils.FloatSet
 
 let header_index =
   let rec loop i map = function
@@ -39,6 +41,7 @@ let tag_of_cell = function
   | { cell_value = Int _ }    -> 0b01
   | { cell_value = Float _ }  -> 0b10
   | { cell_value = String _ } -> 0b11
+  | { cell_value = Ignored } -> assert false
 
 let map_cell f cell = {
   cell_column = cell.cell_column;
@@ -84,6 +87,7 @@ let write_cells_to_file work_dir file_num (cells : csv_cell array) =
         TS_b.write_float_cell bobuf (j, i, value)
       | String value ->
         TS_b.write_string_cell bobuf (j, i, value)
+      | Ignored -> assert false
   done;
   Bi_outbuf.flush_channel_writer bobuf;
   close_out ouch
@@ -143,7 +147,8 @@ type create = {
   work_dir : string;
   max_width : int;
   allow_variable_length_dense_rows : bool;
-  max_threads :int;
+  max_threads : int;
+  user_header : string option;
 }
 
 
@@ -237,7 +242,7 @@ let write_cells_to_work_dir work_dir header next_row config =
       Mcore.spawn mcore (fun () ->
         write_rows ~rows ~file_num
       ) ();
-      [], file_num + 1
+      ([], file_num + 1)
     )
   in
 
@@ -285,7 +290,7 @@ let write_cells_to_work_dir work_dir header next_row config =
   result
 
 let csv_to_cells work_dir config =
-  let { input_path_opt; no_header } = config in
+  let { input_path_opt; no_header; user_header } = config in
   let ch =
     match config.input_path_opt with
       | None ->
@@ -295,7 +300,36 @@ let csv_to_cells work_dir config =
         open_in path
   in
   match Csv_io.of_channel ~no_header ch with
-    | `Ok (header, next_row) ->
+    | `Ok (csv_header, next_row) ->
+      let header = match user_header with
+        | None ->
+          Utils.epr "[INFO] no user header provided\n%!";
+          csv_header
+        | Some s ->
+          Utils.epr "[INFO] user header: %s\n%!" s;
+          let parsed_user_header = Csv_io.header_of_string s in
+          Utils.epr "[DEBG] parsed user header: %s\n%!" (
+            String.concat "," (
+              List.map (fun (cn, ct) ->
+                cn ^ "=" ^ (Csv_types.string_of_coltype ct)
+              ) parsed_user_header
+            )
+          );
+
+          if csv_header = [] then parsed_user_header else
+            let t = Hashtbl.create 16 in
+            List.iter (fun (col_name, col_type) ->
+              Hashtbl.add t col_name col_type
+            ) parsed_user_header;
+            List.map (fun (col_name, col_type) ->
+              try
+                let col_type = Hashtbl.find t col_name in
+                Utils.epr "[INFO] user header %s=%s\n%!"
+                  col_name (Csv_types.string_of_coltype col_type);
+                (col_name, col_type)
+              with Not_found -> col_name, col_type
+            ) csv_header
+      in
       let num_rows, num_cell_files =
         write_cells_to_work_dir work_dir header next_row config
       in
@@ -336,15 +370,10 @@ let kind_count_of_histogram hist =
         | Float _ -> { kc with n_float = kc.n_float + count }
         | Int _ -> { kc with n_int = kc.n_int + count }
         | String _ -> { kc with n_string = kc.n_string + count }
+        | Ignored -> kc
 
   ) hist {n_float=0; n_int=0; n_string=0}
 
-module StringSet = Set.Make(
-  struct
-    type t = string
-    let compare = Pervasives.compare
-  end
-  )
 
 module StringOMap = Map.Make(
   struct
@@ -366,7 +395,7 @@ let indexes_of_cat values cat_x =
                 indexes
             in
             i+1, indexes
-          | Int _ | Float _ -> assert false
+          | Int _ | Float _ | Ignored -> assert false
     ) (0, []) values in
   indexes
 
@@ -389,7 +418,8 @@ let categorical_feature j kc hist n i_values feature_id_to_name config =
           match value with
             | String s -> s
             | Float _
-            | Int _ -> assert false
+            | Int _
+            | Ignored -> assert false
         in
         let category_to_count = (s_value, count) :: category_to_count in
         category_to_count, num_categories + 1
@@ -417,7 +447,7 @@ let categorical_feature j kc hist n i_values feature_id_to_name config =
       let i_cats = List.rev_map (
         fun (i, value) ->
           match value with
-            | Int _ | Float _ -> assert false
+            | Int _ | Float _ | Ignored -> assert false
             | String cat ->
               i, Hashtbl.find cat_to_cat_id cat
       ) i_values (* i_values are in i-reverse order *) in
@@ -465,7 +495,7 @@ let categorical_feature j kc hist n i_values feature_id_to_name config =
     let i_cats = List.rev_map (
       fun (i, value) ->
         match value with
-          | Int _ | Float _ -> assert false
+          | Int _ | Float _ | Ignored -> assert false
           | String cat ->
             let cat_id = Hashtbl.find cat_to_cat_id (Some cat) in
             i, cat_id
@@ -661,14 +691,15 @@ let mixed_type_feature_exn mt_feature_id mt_feature_name i_values =
             string_values, float_value :: float_values, int_values
           | Int int_value ->
             string_values, float_values, int_value :: int_values
-    ) ([], [], []) i_values
+          | Ignored -> assert false
+  ) ([], [], []) i_values
   in
   let mt = {
     mt_feature_id;
     mt_feature_name;
-    mt_string_values;
-    mt_float_values;
-    mt_int_values
+    mt_string_values = StringSet.dedup_list mt_string_values;
+    mt_float_values = FloatSet.dedup_list mt_float_values;
+    mt_int_values = IntSet.dedup_list mt_int_values
   } in
   raise (MixedTypeFeature mt)
 
@@ -685,7 +716,7 @@ let write_feature j i_values n dog feature_id_to_name config =
           | Float _  -> { kind_count with n_float  = kind_count.n_float  + 1 }
           | Int _    -> { kind_count with n_int    = kind_count.n_int    + 1 }
           | String _ -> { kind_count with n_string = kind_count.n_string + 1 }
-
+          | Ignored -> kind_count
     ) {n_float=0; n_int=0; n_string=0} i_values in
   if kind_count.n_string > 0 then
     if kind_count.n_float = 0 && kind_count.n_int = 0 then
@@ -879,7 +910,7 @@ module Defaults = struct
 end
 
 let csv_to_dog output_path input_path_opt max_density no_header csv_buffer_size
-    max_width max_threads =
+    max_width max_threads user_header =
   if max_density > 1.0 || max_density < 0.0 then (
     printf "max-density must be between 0 and 1 (inclusive)";
     exit 1
@@ -904,6 +935,7 @@ let csv_to_dog output_path input_path_opt max_density no_header csv_buffer_size
     work_dir = Defaults.work_dir;
     max_width;
     max_threads;
+    user_header;
     allow_variable_length_dense_rows =
       Defaults.allow_variable_length_dense_rows;
   } in
@@ -968,6 +1000,13 @@ let commands =
            info ["t";"max-threads"] ~docv:"INT" ~doc)
     in
 
+    let user_header =
+      let doc = "File header: use this option to specify column types \
+                 using the following syntax: <col name>=[cat|num],..." in
+      Arg.(value & opt (some string) None &
+           info ["h";"header"] ~docv:"STRING" ~doc)
+    in
+
     Term.(
       pure csv_to_dog $
         output_path $
@@ -976,7 +1015,8 @@ let commands =
         no_header $
         csv_buffer_size $
         max_width $
-        max_threads
+        max_threads $
+        user_header
     ),
     Term.info "csv" ~doc
   in

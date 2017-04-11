@@ -121,11 +121,13 @@ and header = parse
   | '\''
       { STRING (single_quoted_string [] lexbuf) }
 
+  | "cat" | "CAT" { CAT }
+  | "num" | "NUM" { NUM }
+  | "ignore" 'd'? | "IGNORE" 'D'? { IGN }
+
   | not_special+
       { STRING (lexeme lexbuf) }
 
-  | "[cat]" | "[CAT]" { CAT }
-  | "[num]" | "[NUM]" { NUM }
 
 and single_quoted_string l = parse
   | '\''
@@ -184,6 +186,7 @@ and escaped_char = parse
 
     | CAT -> "CAT"
     | NUM -> "NUM"
+    | IGN -> "IGN"
     | COMMA  -> ","
     | RCURLY -> "}"
     | LCURLY -> "{"

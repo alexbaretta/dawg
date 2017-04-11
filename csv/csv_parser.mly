@@ -9,6 +9,7 @@
 
 %token CAT
 %token NUM
+%token IGN
 %token LCURLY
 %token RCURLY
 %token COMMA
@@ -24,11 +25,15 @@
 
 %%
 
+eoh:
+ | EOL { () }
+ | EOF { () }
+
 header:
-| columns EOL { $1 }
-| columns COMMENT EOL { $1 }
-| newlines columns EOL { $2 }
-| newlines columns COMMENT EOL { $2 }
+| columns eoh { $1 }
+| columns COMMENT eoh { $1 }
+| newlines columns eoh { $2 }
+| newlines columns COMMENT eoh { $2 }
 
 columns:
 | STRING COMMA columns { ($1, `Untyped) :: $3 }
@@ -37,6 +42,8 @@ columns:
 | STRING CAT { [ ($1, `Cat) ] }
 | STRING NUM COMMA columns { ($1, `Num) :: $4 }
 | STRING NUM { [ ($1, `Num) ] }
+| STRING IGN COMMA columns { ($1, `Ignored) :: $4 }
+| STRING IGN { [ ($1, `Ignored) ] }
 
 value:
 | NEG_INT { (`Int $1) }

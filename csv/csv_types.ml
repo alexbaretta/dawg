@@ -1,4 +1,4 @@
-type col_type = [ `Cat | `Num | `Untyped ]
+type col_type = [ `Cat | `Num | `Ignored | `Untyped ]
 type col_header = string * col_type
 type header = col_header list
 
@@ -8,6 +8,7 @@ type parsed_value =
   | Int of int
   | Float of float
   | String of string
+  | Ignored
 type parsed_row = (int * parsed_value) list
 
 type dense = value option list
@@ -21,7 +22,15 @@ type invalid_value = {
   invalid_value : string;
   invalid_type : [ `Int | `Float | `String];
 }
+
 exception Invalid_value of invalid_value
+
+let string_of_coltype = function
+  | `Cat -> "CAT"
+  | `Num -> "NUM"
+  | `Untyped -> "UNTYPED"
+  | `Ignored -> "IGNORED"
+
 let invalid_value col_name col_type v =
   let payload = match v with
     | `String invalid_value -> { col_name; col_type; invalid_value; invalid_type = `String }
@@ -34,20 +43,23 @@ let int_of_value : parsed_value -> int = function
   | Int i -> i
   | Float x -> Printf.ksprintf invalid_arg "int_of_value: Float %f" x
   | String s -> Printf.ksprintf invalid_arg "int_of_value: String %s" s
+  | Ignored -> invalid_arg "int_of_value: Ignored"
 
 let float_of_value : parsed_value -> float = function
   | Float x -> x
   | Int i -> float i
   | String s -> Printf.ksprintf invalid_arg "float_of_value: String %s" s
+  | Ignored -> invalid_arg "float_of_value: Ignored"
 
 let string_of_value : parsed_value -> string = function
   | String s -> s
   | Float x -> Printf.ksprintf invalid_arg "string_of_value: Float %f" x
   | Int i -> Printf.ksprintf invalid_arg "string_of_value: Int %d" i
+  | Ignored -> invalid_arg "string_of_value: Ignored"
 
 let parse_value (col_header:col_header) csv_value =
   match col_header with
-    | (_, `Cat) -> (
+    | (col_name, `Cat) -> (
       match csv_value with
         | `Int s
         | `Float s
@@ -65,11 +77,13 @@ let parse_value (col_header:col_header) csv_value =
         | `Float f -> Float (float_of_string f)
         | `String s -> String s
       )
+    | _, `Ignored -> assert false
 
 let parse_dense_row (header:header) opt_row =
   let rec loop i accu count (header_tl:header) opt_row =
     match header_tl, opt_row with
-      | _ :: header_tl, None :: opt_row_tl ->
+      | _ :: header_tl, None :: opt_row_tl
+      | (_, `Ignored) :: header_tl, _ :: opt_row_tl ->
         loop (succ i) accu count header_tl opt_row_tl
       | col_header :: header_tl, (Some v) :: opt_row_tl ->
         let parsed = parse_value col_header v in
@@ -88,7 +102,9 @@ let parse_sparse_row (header:header) =
   fun sparse_row ->
     List.fold_left (
       fun (accu, count) (i, csv_value) ->
-        ((i, parse_value (Hashtbl.find header_table i) csv_value) :: accu, count+1)
+        let h = Hashtbl.find header_table i in
+        if snd h = `Ignored then accu, count else
+          ((i, parse_value h csv_value) :: accu, count+1)
     ) ([], 0) sparse_row
 
 let parse_row (header:header) : row -> parsed_row * int =

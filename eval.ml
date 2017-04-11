@@ -184,7 +184,7 @@ let mk_get features header =
   let translate_value feature_id = function
     | Int i -> `Float (float i)
     | Float f -> `Float f (* cast *)
-    | String category ->
+    | String category -> (
       try
         let entry = Hashtbl.find feature_id_to_categorical_entry feature_id in
         try
@@ -200,6 +200,8 @@ let mk_get features header =
 
       with Not_found ->
         raise (TypeMismatch (feature_id, String category))
+    )
+    | Ignored -> failwith "translate_value called on Ignored"
   in
 
   let get (sparse : (int * Csv_types.parsed_value) list) =
@@ -390,6 +392,7 @@ let model_eval
                   | Int i -> sprintf "integer value %d" i
                   | Float f -> sprintf "float value %f" f
                   | String s -> sprintf "string value %S" s
+                  | Ignored -> sprintf "ignored value"
                 )
                 feature_id;
               false

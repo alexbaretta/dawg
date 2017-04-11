@@ -46,8 +46,9 @@ let pr_strings ?(sep=",") out strings =
 let pr_header ?sep out header =
   let strings = List.map (function
     | col_name, `Untyped -> col_name
-    | col_name, `Cat -> col_name ^ "[cat]"
-    | col_name, `Num -> col_name ^ "[num]"
+    | col_name, `Cat -> col_name ^ " cat"
+    | col_name, `Num -> col_name ^ " num"
+    | col_name, `Ignored -> col_name ^ " ignored"
   ) header
   in
   pr_strings ?sep out strings

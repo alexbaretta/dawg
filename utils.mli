@@ -26,6 +26,8 @@ val default : 'a -> 'a option -> 'a
 module type XSetS = sig
   include Set.S
   val to_list : t -> elt list
+  val of_list : elt list -> t
+  val dedup_list : elt list -> elt list
 end
 module XSet : functor ( M : Set.OrderedType ) -> XSetS with type elt = M.t
 module type XMapS = sig
@@ -39,6 +41,10 @@ module XMap : functor ( M : Map.OrderedType ) -> XMapS with type key = M.t
 module Int : sig
   type t = int
   val compare : int -> int -> int
+end
+module Float : sig
+  type t = float
+  val compare : float -> float -> int
 end
 
 val width : int -> int
@@ -71,6 +77,9 @@ end
 
 module IntMap : XMapS with type key = int
 module IntSet : XSetS with type elt = int
+module StringMap : XMapS with type key = string
+module StringSet : XSetS with type elt = string
+module FloatSet : XSetS with type elt = float
 
 module Array : sig
   include module type of Array
