@@ -1,4 +1,35 @@
+open Dog_j
+
 let pr = Printf.printf
+
+let cleanup_float x = min max_float (max ~-.max_float x)
+let cleanup_floats xs = Array.map cleanup_float xs
+
+let cleanup_float_breakpoints_for_json breakpoints = {
+  bounds = cleanup_floats breakpoints.bounds;
+  repr_elements = cleanup_floats breakpoints.repr_elements;
+  freq = breakpoints.freq;
+}
+
+let cleanup_o_breakpoints_for_json o_breakpoints =
+  match o_breakpoints with
+    | `Float (breakpoints : float breakpoints) -> `Float (cleanup_float_breakpoints_for_json breakpoints)
+    | `Int (_ : int breakpoints) -> o_breakpoints
+
+let cleanup_ord_for_json ord_a =
+  let { o_breakpoints } = ord_a in
+  let o_breakpoints = cleanup_o_breakpoints_for_json o_breakpoints in
+  { ord_a with o_breakpoints }
+
+let cleanup_features_for_json features =
+  let { cat_a; ord_a } = features in
+  (* let cat_a = cleanup_cat_for_json cat_a in *)
+  let ord_a = List.map cleanup_ord_for_json ord_a in
+  { cat_a; ord_a }
+
+let cleanup_dog_for_json dog =
+  let { num_observations; features } = dog in
+  { num_observations; features = cleanup_features_for_json features }
 
 let meta path feature_opt =
   let open Feat_map in
@@ -20,7 +51,7 @@ let meta path feature_opt =
                 | _ ->
                   List.iter (
                     fun feature ->
-                      let feature_s = Dog_j.string_of_ifeature feature in
+                      let feature_s = string_of_ifeature feature in
                       print_endline (Yojson.Safe.prettify feature_s)
                   ) features
             )
@@ -30,7 +61,8 @@ let meta path feature_opt =
       )
 
     | None ->
-      let dog_s = Yojson.Safe.prettify (Dog_j.string_of_t dog) in
+      let dog = cleanup_dog_for_json dog in
+      let dog_s = Yojson.Safe.prettify (string_of_t dog) in
       print_endline dog_s
 
 let string_or_empty = function
